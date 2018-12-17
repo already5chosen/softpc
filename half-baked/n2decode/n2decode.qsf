@@ -57,94 +57,15 @@ set_global_assignment -name POWER_BOARD_THERMAL_MODEL "NONE (CONSERVATIVE)"
 set_global_assignment -name FLOW_DISABLE_ASSEMBLER ON
 set_global_assignment -name TIMEQUEST_MULTICORNER_ANALYSIS ON
 
-set_location_assignment PIN_R16 -to result[0]
-set_location_assignment PIN_R1 -to result[1]
-set_location_assignment PIN_J15 -to result[2]
-set_location_assignment PIN_L15 -to result[3]
-set_location_assignment PIN_G15 -to result[4]
-set_location_assignment PIN_F15 -to result[5]
-set_location_assignment PIN_E11 -to result[6]
-set_location_assignment PIN_R10 -to result[7]
-set_location_assignment PIN_J13 -to result[8]
-set_location_assignment PIN_K11 -to result[9]
-set_location_assignment PIN_E9 -to result[10]
-set_location_assignment PIN_K15 -to result[11]
-set_location_assignment PIN_R13 -to result[12]
-set_location_assignment PIN_A12 -to result[13]
-set_location_assignment PIN_J16 -to result[14]
-set_location_assignment PIN_N15 -to result[15]
-set_location_assignment PIN_R5 -to result[16]
-set_location_assignment PIN_T3 -to result[17]
-set_location_assignment PIN_R8 -to result[18]
-set_location_assignment PIN_T8 -to result[19]
-set_location_assignment PIN_B10 -to result[20]
-set_location_assignment PIN_T9 -to result[21]
-set_location_assignment PIN_A15 -to result[22]
-set_location_assignment PIN_P9 -to result[23]
-set_location_assignment PIN_T13 -to result[24]
-set_location_assignment PIN_N8 -to result[25]
-set_location_assignment PIN_D15 -to result[26]
-set_location_assignment PIN_L11 -to result[27]
-set_location_assignment PIN_A10 -to result[28]
-set_location_assignment PIN_T6 -to result[29]
-set_location_assignment PIN_L9 -to result[30]
-set_location_assignment PIN_M8 -to result[31]
-
-set_location_assignment PIN_C11 -to a[0]
-set_location_assignment PIN_P14 -to a[1]
-set_location_assignment PIN_L16 -to a[2]
-set_location_assignment PIN_F13 -to a[3]
-set_location_assignment PIN_J14 -to a[4]
-set_location_assignment PIN_F9 -to a[5]
-set_location_assignment PIN_D9 -to a[6]
-set_location_assignment PIN_J11 -to a[7]
-set_location_assignment PIN_K12 -to a[8]
-set_location_assignment PIN_F10 -to a[9]
-set_location_assignment PIN_L14 -to a[10]
-set_location_assignment PIN_K16 -to a[11]
-set_location_assignment PIN_G11 -to a[12]
-set_location_assignment PIN_B12 -to a[13]
-set_location_assignment PIN_B11 -to a[14]
-set_location_assignment PIN_D12 -to a[15]
-set_location_assignment PIN_T12 -to a[16]
-set_location_assignment PIN_R7 -to a[17]
-set_location_assignment PIN_B16 -to a[18]
-set_location_assignment PIN_M11 -to a[19]
-set_location_assignment PIN_M7 -to a[20]
-set_location_assignment PIN_J12 -to a[21]
-set_location_assignment PIN_F11 -to a[22]
-set_location_assignment PIN_P2 -to a[23]
-set_location_assignment PIN_C9 -to a[24]
-set_location_assignment PIN_M10 -to a[25]
-set_location_assignment PIN_E15 -to a[26]
-set_location_assignment PIN_T14 -to a[27]
-set_location_assignment PIN_L10 -to a[28]
-set_location_assignment PIN_N11 -to a[29]
-set_location_assignment PIN_K10 -to a[30]
-set_location_assignment PIN_R12 -to a[31]
-
-set_location_assignment PIN_G16 -to b[0]
-set_location_assignment PIN_P16 -to b[1]
-set_location_assignment PIN_R11 -to b[2]
-set_location_assignment PIN_B14 -to b[3]
-set_location_assignment PIN_A11 -to b[4]
-
-set_location_assignment PIN_R6 -to op_shift
-set_location_assignment PIN_T5 -to op_left
-set_location_assignment PIN_N6 -to op_arith
-
-set_location_assignment PIN_L2 -to clk
-
-set_parameter -name DATA_WIDTH 32
-set_parameter -name B_WIDTH 5
-
-
 set_global_assignment -name PARTITION_NETLIST_TYPE SOURCE -section_id Top
 set_global_assignment -name PARTITION_FITTER_PRESERVATION_LEVEL PLACEMENT_AND_ROUTING -section_id Top
 set_global_assignment -name PARTITION_COLOR 16764057 -section_id Top
+
 set_global_assignment -name VHDL_FILE n2decode.vhd
 set_global_assignment -name VHDL_FILE n2opcodes.vhd
 set_global_assignment -name VHDL_FILE shifter_opcodes.vhd
 set_global_assignment -name VHDL_FILE alu_opcodes.vhd
+set_global_assignment -name VHDL_FILE memory_opcodes.vhd
 set_global_assignment -name SDC_FILE n2decode.sdc
+
 set_instance_assignment -name PARTITION_HIERARCHY root_partition -to | -section_id Top
