@@ -16,6 +16,7 @@ entity n2decode is
   is_immh  : out boolean; -- true = I-type ALU instruction with IMM16 specifying upper half of the data
   is_imm5  : out boolean; -- true = R-type instruction with IMM5
   is_cti   : out boolean; -- true = control transfer instruction
+  is_cti_a : out boolean; -- true = control transfer instruction with absolute target (as opposed to PC+4+sIMM16)
   is_call  : out boolean; -- true = call instruction - implicit destination register r31
   is_alu   : out boolean; -- true = ALU instruction
   is_shift : out boolean; -- true = Shift/Rotate instruction
@@ -44,6 +45,7 @@ begin
     is_immh  <= false;
     is_imm5  <= false;
     is_cti   <= false;
+    is_cti_a <= false;
     is_call  <= false;
     is_alu   <= false;
     is_shift <= false;
@@ -55,6 +57,7 @@ begin
         is_imm16 <= false;
         is_imm26 <= true;
         is_cti   <= true;
+        is_cti_a <= true;
         is_call  <= true;
         fu_op    <= ALU_OP_TRUE;
 
@@ -62,6 +65,7 @@ begin
         is_imm16 <= false;
         is_imm26 <= true;
         is_cti   <= true;
+        is_cti_a <= true;
         fu_op    <= ALU_OP_TRUE;
 
       when OP_LDBU  =>
@@ -260,10 +264,10 @@ begin
 
       when OP_CUSTOM  =>
         is_imm16 <= false; -- custom instructions not implemented
-        
+
       when OP_INITD   =>
         is_imm16 <= false;
-        
+
       when OP_ORHI    =>
         is_alu   <= true;
         a_is_src <= true;
@@ -288,7 +292,7 @@ begin
         a_is_src <= true;
         b_is_dst <= true;
         fu_op    <= MEM_OP_LDW;
-        
+
       when OP_RDPRS   => -- implement as ADDI
         is_alu   <= true;
         a_is_src <= true;
@@ -300,7 +304,7 @@ begin
 
       when OP_FLUSHD  =>
         is_imm16 <= false;
-        
+
       when OP_XORHI   =>
         is_alu   <= true;
         a_is_src <= true;
@@ -311,6 +315,82 @@ begin
       when others =>
         is_imm16 <= false;
     end case;
+
+    if op=OP_RTYPE then
+      case to_integer(opx) is
+        when OPX_ERET   =>
+          null; -- TODO
+
+        when OPX_ROLI   =>
+          is_shift <= true;
+          a_is_src <= true;
+          c_is_dst <= true;
+          is_imm5  <= true;
+          fu_op    <= SHIFTER_OP_ROL;
+
+        when OPX_ROL    =>
+          is_shift <= true;
+          a_is_src <= true;
+          b_is_src <= true;
+          c_is_dst <= true;
+          fu_op    <= SHIFTER_OP_ROL;
+
+        when OPX_FLUSHP =>
+          null;
+
+        when OPX_RET    =>
+          is_cti   <= true;
+          is_cti_a <= true;
+          a_is_src <= true;
+          fu_op    <= ALU_OP_TRUE;
+
+        when OPX_NOR    =>
+          is_alu   <= true;
+          a_is_src <= true;
+          b_is_src <= true;
+          c_is_dst <= true;
+          fu_op    <= ALU_OP_NOR;
+
+        when OPX_MULXUU =>
+          null; -- MUL not implemented
+
+        when OPX_CMPGE  =>
+          is_alu   <= true;
+          a_is_src <= true;
+          b_is_src <= true;
+          c_is_dst <= true;
+          fu_op    <= ALU_OP_CMPGE;
+
+        when OPX_BRET   =>
+          null; -- TODO
+
+        when OPX_ROR    =>
+          is_shift <= true;
+          a_is_src <= true;
+          b_is_src <= true;
+          c_is_dst <= true;
+          fu_op    <= SHIFTER_OP_ROL;
+
+        when OPX_FLUSHI =>
+          null;
+
+        when OPX_JMP    =>
+          is_cti   <= true;
+          is_cti_a <= true;
+          a_is_src <= true;
+          fu_op    <= ALU_OP_TRUE;
+
+        when OPX_AND    =>
+          is_alu   <= true;
+          a_is_src <= true;
+          b_is_src <= true;
+          c_is_dst <= true;
+          fu_op    <= ALU_OP_AND;
+
+      when others =>
+        null;
+      end case;
+    end if;
 
   end process;
 end architecture a;
