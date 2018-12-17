@@ -13,6 +13,7 @@ entity n2decode is
   c_is_dst : out boolean; -- true = instruction field C is a name of the destination register
   is_imm26 : out boolean; -- true = J-type instruction with IMM26
   is_imm16 : out boolean; -- true = I-type instruction with IMM16
+  is_immh  : out boolean; -- true = I-type ALU instruction with IMM16 specifying upper half of the data
   is_imm5  : out boolean; -- true = R-type instruction with IMM5
   is_cti   : out boolean; -- true = control transfer instruction
   is_call  : out boolean; -- true = call instruction - implicit destination register r31
@@ -40,6 +41,7 @@ begin
     c_is_dst <= false;
     is_imm26 <= false;
     is_imm16 <= true;
+    is_immh  <= false;
     is_imm5  <= false;
     is_cti   <= false;
     is_call  <= false;
@@ -61,9 +63,6 @@ begin
         is_imm26 <= true;
         is_cti   <= true;
         fu_op    <= ALU_OP_TRUE;
-
-      when OP_RTYPE =>
-        is_imm16 <= false;
 
       when OP_LDBU  =>
         is_lsu   <= true;
@@ -129,7 +128,188 @@ begin
         b_is_dst <= true;
         fu_op    <= MEM_OP_LDH;
 
-      when others => null;
+      when OP_CMPLTI  =>
+        is_alu   <= true;
+        a_is_src <= true;
+        b_is_dst <= true;
+        fu_op    <= ALU_OP_CMPLT;
+
+      when OP_INITDA  =>
+        is_imm16 <= false;
+
+      when OP_ORI     =>
+        is_alu   <= true;
+        a_is_src <= true;
+        b_is_dst <= true;
+        fu_op    <= ALU_OP_OR;
+
+      when OP_STW     =>
+        is_lsu   <= true;
+        a_is_src <= true;
+        b_is_src <= true;
+        fu_op    <= MEM_OP_STW;
+
+      when OP_BLT     =>
+        is_cti   <= true;
+        a_is_src <= true;
+        b_is_src <= true;
+        fu_op    <= ALU_OP_CMPLT;
+
+      when OP_LDW     =>
+        is_lsu   <= true;
+        a_is_src <= true;
+        b_is_dst <= true;
+        fu_op    <= MEM_OP_LDW;
+
+      when OP_CMPNEI  =>
+        is_alu   <= true;
+        a_is_src <= true;
+        b_is_dst <= true;
+        fu_op    <= ALU_OP_CMPNE;
+
+      when OP_FLUSHDA =>
+        is_imm16 <= false;
+
+      when OP_XORI    =>
+        is_alu   <= true;
+        a_is_src <= true;
+        b_is_dst <= true;
+        fu_op    <= ALU_OP_XOR;
+
+      when OP_BNE     =>
+        is_cti   <= true;
+        a_is_src <= true;
+        b_is_src <= true;
+        fu_op    <= ALU_OP_CMPNE;
+
+      when OP_CMPEQI  =>
+        is_alu   <= true;
+        a_is_src <= true;
+        b_is_dst <= true;
+        fu_op    <= ALU_OP_CMPEQ;
+
+      when OP_LDBUIO  =>
+        is_lsu   <= true;
+        a_is_src <= true;
+        b_is_dst <= true;
+        fu_op    <= MEM_OP_LDBU;
+
+      when OP_MULI    =>
+        is_imm16 <= false; -- MUL not implemented
+
+      when OP_STBIO   =>
+        is_lsu   <= true;
+        a_is_src <= true;
+        b_is_src <= true;
+        fu_op    <= MEM_OP_STB;
+
+      when OP_BEQ     =>
+        is_cti   <= true;
+        a_is_src <= true;
+        b_is_src <= true;
+        fu_op    <= ALU_OP_CMPEQ;
+
+      when OP_LDBIO   =>
+        is_lsu   <= true;
+        a_is_src <= true;
+        b_is_dst <= true;
+        fu_op    <= MEM_OP_LDB;
+
+      when OP_CMPGEUI =>
+        is_alu   <= true;
+        a_is_src <= true;
+        b_is_dst <= true;
+        fu_op    <= ALU_OP_CMPGEU;
+
+      when OP_LDHUIO  =>
+        is_lsu   <= true;
+        a_is_src <= true;
+        b_is_dst <= true;
+        fu_op    <= MEM_OP_LDHU;
+
+      when OP_ANDHI   =>
+        is_alu   <= true;
+        a_is_src <= true;
+        b_is_dst <= true;
+        is_immh  <= true;
+        fu_op    <= ALU_OP_AND;
+
+      when OP_STHIO   =>
+        is_lsu   <= true;
+        a_is_src <= true;
+        b_is_src <= true;
+        fu_op    <= MEM_OP_STH;
+
+      when OP_BGEU    =>
+        is_cti   <= true;
+        a_is_src <= true;
+        b_is_src <= true;
+        fu_op    <= ALU_OP_CMPGEU;
+
+      when OP_LDHIO   =>
+        is_lsu   <= true;
+        a_is_src <= true;
+        b_is_dst <= true;
+        fu_op    <= MEM_OP_LDH;
+
+      when OP_CMPLTUI =>
+        is_alu   <= true;
+        a_is_src <= true;
+        b_is_dst <= true;
+        fu_op    <= ALU_OP_CMPLTU;
+
+      when OP_CUSTOM  =>
+        is_imm16 <= false; -- custom instructions not implemented
+        
+      when OP_INITD   =>
+        is_imm16 <= false;
+        
+      when OP_ORHI    =>
+        is_alu   <= true;
+        a_is_src <= true;
+        b_is_dst <= true;
+        is_immh  <= true;
+        fu_op    <= ALU_OP_OR;
+
+      when OP_STWIO   =>
+        is_lsu   <= true;
+        a_is_src <= true;
+        b_is_src <= true;
+        fu_op    <= MEM_OP_STW;
+
+      when OP_BLTU    =>
+        is_cti   <= true;
+        a_is_src <= true;
+        b_is_src <= true;
+        fu_op    <= ALU_OP_CMPLTU;
+
+      when OP_LDWIO   =>
+        is_lsu   <= true;
+        a_is_src <= true;
+        b_is_dst <= true;
+        fu_op    <= MEM_OP_LDW;
+        
+      when OP_RDPRS   => -- implement as ADDI
+        is_alu   <= true;
+        a_is_src <= true;
+        b_is_dst <= true;
+        fu_op    <= ALU_OP_ADD;
+
+      when OP_RTYPE   =>
+        is_imm16 <= false;
+
+      when OP_FLUSHD  =>
+        is_imm16 <= false;
+        
+      when OP_XORHI   =>
+        is_alu   <= true;
+        a_is_src <= true;
+        b_is_dst <= true;
+        is_immh  <= true;
+        fu_op    <= ALU_OP_XOR;
+
+      when others =>
+        is_imm16 <= false;
     end case;
 
   end process;
