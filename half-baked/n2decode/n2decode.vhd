@@ -270,7 +270,7 @@ begin
         dstreg_class <= DEST_REG_CLASS_B;
         fu_op        <= MEM_OP_LDW;
 
-      when OP_RDPRS   => -- implement as ADDI
+      when OP_RDPRS   => -- implement as ADDI, TODO
         srcreg_class <= SRC_REG_CLASS_A;
         imm_class    <= IMM_CLASS_s16;
         dstreg_class <= DEST_REG_CLASS_B;
@@ -353,8 +353,138 @@ begin
           dstreg_class <= DEST_REG_CLASS_C;
           fu_op        <= ALU_OP_AND;
 
-      when others =>
-        null;
+        when OPX_CMPLT  =>
+          srcreg_class <= SRC_REG_CLASS_AB;
+          dstreg_class <= DEST_REG_CLASS_C;
+          fu_op        <= ALU_OP_CMPLT;
+
+        when OPX_SLLI   =>
+          instr_class  <= INSTR_CLASS_SHIFT;
+          srcreg_class <= SRC_REG_CLASS_A;
+          imm_class    <= IMM_CLASS_5;
+          dstreg_class <= DEST_REG_CLASS_C;
+          fu_op        <= SHIFTER_OP_SLL;
+
+        when OPX_SLL    =>
+          instr_class  <= INSTR_CLASS_SHIFT;
+          srcreg_class <= SRC_REG_CLASS_AB;
+          dstreg_class <= DEST_REG_CLASS_C;
+          fu_op        <= SHIFTER_OP_SLL;
+
+        when OPX_WRPRS  =>
+          null; -- TODO
+
+        when OPX_OR     =>
+          srcreg_class <= SRC_REG_CLASS_AB;
+          dstreg_class <= DEST_REG_CLASS_C;
+          fu_op        <= ALU_OP_OR;
+
+        when OPX_MULXSU =>
+          null; -- MUL not implemented
+
+        when OPX_CMPNE  =>
+          srcreg_class <= SRC_REG_CLASS_AB;
+          dstreg_class <= DEST_REG_CLASS_C;
+          fu_op        <= ALU_OP_CMPNE;
+
+        when OPX_SRLI   =>
+          instr_class  <= INSTR_CLASS_SHIFT;
+          srcreg_class <= SRC_REG_CLASS_A;
+          imm_class    <= IMM_CLASS_5;
+          dstreg_class <= DEST_REG_CLASS_C;
+          fu_op        <= SHIFTER_OP_SRL;
+
+        when OPX_SRL    =>
+          instr_class  <= INSTR_CLASS_SHIFT;
+          srcreg_class <= SRC_REG_CLASS_AB;
+          dstreg_class <= DEST_REG_CLASS_C;
+          fu_op        <= SHIFTER_OP_SRL;
+
+        when OPX_NEXTPC =>
+          instr_class  <= INSTR_CLASS_COPY;
+          srcreg_class <= SRC_REG_CLASS_NEXTPC;
+          dstreg_class <= DEST_REG_CLASS_C;
+
+        when OPX_CALLR  =>
+          instr_class  <= INSTR_CLASS_JUMP;
+          srcreg_class <= SRC_REG_CLASS_A;
+          dstreg_class <= DEST_REG_CLASS_CALL;
+
+        when OPX_XOR    =>
+          srcreg_class <= SRC_REG_CLASS_AB;
+          dstreg_class <= DEST_REG_CLASS_C;
+          fu_op        <= ALU_OP_XOR;
+
+        when OPX_MULXSS =>
+          null; -- MUL not implemented
+
+        when OPX_CMPEQ  =>
+          srcreg_class <= SRC_REG_CLASS_AB;
+          dstreg_class <= DEST_REG_CLASS_C;
+          fu_op        <= ALU_OP_CMPEQ;
+
+        when OPX_DIVU   =>
+          null; -- DIV not implemented
+
+        when OPX_DIV    =>
+          null; -- DIV not implemented
+
+        when OPX_RDCTL  =>
+          null; -- TODO
+
+        when OPX_MUL    =>
+          null; -- MUL not implemented
+
+        when OPX_CMPGEU =>
+          srcreg_class <= SRC_REG_CLASS_AB;
+          dstreg_class <= DEST_REG_CLASS_C;
+          fu_op        <= ALU_OP_CMPGEU;
+
+        when OPX_INITI  =>
+          null;
+
+        when OPX_TRAP   =>
+          null; -- TODO
+
+        when OPX_WRCTL  =>
+          null; -- TODO
+
+        when OPX_CMPLTU =>
+          srcreg_class <= SRC_REG_CLASS_AB;
+          dstreg_class <= DEST_REG_CLASS_C;
+          fu_op        <= ALU_OP_CMPLTU;
+
+        when OPX_ADD    =>
+          srcreg_class <= SRC_REG_CLASS_AB;
+          dstreg_class <= DEST_REG_CLASS_C;
+          fu_op        <= ALU_OP_ADD;
+
+        when OPX_BREAK  =>
+          null; -- TODO
+
+        when OPX_SYNC   =>
+          null;
+
+        when OPX_SUB    =>
+          srcreg_class <= SRC_REG_CLASS_AB;
+          dstreg_class <= DEST_REG_CLASS_C;
+          fu_op        <= ALU_OP_SUB;
+
+        when OPX_SRAI   =>
+          instr_class  <= INSTR_CLASS_SHIFT;
+          srcreg_class <= SRC_REG_CLASS_A;
+          imm_class    <= IMM_CLASS_5;
+          dstreg_class <= DEST_REG_CLASS_C;
+          fu_op        <= SHIFTER_OP_SRA;
+
+        when OPX_SRA    =>
+          instr_class  <= INSTR_CLASS_SHIFT;
+          srcreg_class <= SRC_REG_CLASS_AB;
+          dstreg_class <= DEST_REG_CLASS_C;
+          fu_op        <= SHIFTER_OP_SRA;
+
+        when others =>
+          null;
       end case;
     end if;
 
