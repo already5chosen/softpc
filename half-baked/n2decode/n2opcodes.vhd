@@ -8,7 +8,7 @@ package nios2_opcodes is
   constant OP_STB     : natural := 0*16+5;
   constant OP_BR      : natural := 0*16+6;
   constant OP_LDB     : natural := 0*16+7;
-  constant OP_CMPGE   : natural := 0*16+8;
+  constant OP_CMPGEI  : natural := 0*16+8;
   constant OP_09      : natural := 0*16+9;
   constant OP_0A      : natural := 0*16+10;
   constant OP_LDHU    : natural := 0*16+11;
