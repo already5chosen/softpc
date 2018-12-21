@@ -23,10 +23,10 @@ almost to the end, before the next one is started:
 5. Memory Address (Optional, used only by memory loads and stores)
  - Drive Data address/control signals on *_address buses
  - Drive *_writedata and *_byteenable signals for stores
- - For Avalon-mm accesses remain at this stage until fabric de-asserts avm_waitrequest signal
+ - Avalon-mm accesses remain at this stage until fabric de-asserts avm_waitrequest signal
 6. Align (Optional, used only by memory loads)
  - Align and sign or zero-extend Load data
- - For Avalon-mm accesses remain at this stage until fabric asserts avm_readdatavalid signal
+ - Avalon-mm accesses remain at this stage until fabric asserts avm_readdatavalid signal
 
 
 
