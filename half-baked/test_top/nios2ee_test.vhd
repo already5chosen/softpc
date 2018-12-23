@@ -29,7 +29,7 @@ architecture rtl of nios2ee_test is
   signal avm_read          : std_logic;                      --  .read
   signal avm_byteenable    : std_logic_vector(3 downto 0);   --  .byteenable
   -- tightly-coupled memory port
-  signal tcm_address       : std_logic_vector(12 downto 2);  -- 32-bit words
+  signal tcm_rdaddress, tcm_wraddress : std_logic_vector(12 downto 2);  -- 32-bit words
   signal tcm_write         : std_logic;
   signal tcm_byteenable    : std_logic_vector(3 downto 0);
   signal tcm_writedata     : std_logic_vector(31 downto 0);
@@ -64,7 +64,8 @@ begin
     clk               => clk,         -- in  std_logic;
     reset             => not reset_n, -- in  std_logic;
     -- tightly-coupled memory (both program and data). Read latency=1 clock
-    tcm_address       => tcm_address   , -- out std_logic_vector(TCM_ADDR_WIDTH-1 downto 2); -- 32-bit words
+    tcm_rdaddress     => tcm_rdaddress , -- out std_logic_vector(TCM_ADDR_WIDTH-1 downto 2); -- 32-bit words
+    tcm_wraddress     => tcm_wraddress , -- out std_logic_vector(TCM_ADDR_WIDTH-1 downto 2); -- 32-bit words
     tcm_write         => tcm_write     , -- out std_logic;
     tcm_byteenable    => tcm_byteenable, -- out std_logic_vector(3 downto 0);
     tcm_writedata     => tcm_writedata , -- out std_logic_vector(31 downto 0);
@@ -104,8 +105,8 @@ begin
 		read_during_write_mode_mixed_ports => "DONT_CARE"
 	)
 	PORT MAP (
-		address_a => tcm_address,
-		address_b => tcm_address,
+		address_a => tcm_wraddress,
+		address_b => tcm_rdaddress,
 		byteena_a => tcm_byteenable,
 		clock0    => clk,
 		data_a    => tcm_writedata,

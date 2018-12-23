@@ -13,7 +13,8 @@ entity nios2ee is
   clk               : in  std_logic;
   reset             : in  std_logic;
   -- tightly-coupled memory (both program and data). Read latency=1 clock
-  tcm_address       : out std_logic_vector(TCM_ADDR_WIDTH-1 downto 2); -- 32-bit words
+  tcm_rdaddress     : out std_logic_vector(TCM_ADDR_WIDTH-1 downto 2); -- 32-bit words
+  tcm_wraddress     : out std_logic_vector(TCM_ADDR_WIDTH-1 downto 2); -- 32-bit words
   tcm_write         : out std_logic;
   tcm_byteenable    : out std_logic_vector(3 downto 0);
   tcm_writedata     : out std_logic_vector(31 downto 0);
@@ -39,26 +40,28 @@ use work.memory_opcodes.all;
 architecture a of nios2ee is
   -- processing phases
   constant PH_Fetch : integer := 0;
-  -- Start driving instruction address on tcm_address.
+  -- Start driving instruction address on tcm_rdaddress.
   -- Write result of the previous instruction into register file.
-  constant PH_Decode1 : integer := 1;
+  constant PH_Decode : integer := 1;
   -- drive register file address with index of the first source register
-  constant PH_Decode2 : integer := 2;
+  constant PH_Regfile1 : integer := 2;
   -- [Optional] used only by instructions with 2 register sources except for integer stores
   -- drive register file address with index of the second source register
   -- latch value of the first source register
-  constant PH_Execute : integer := 3;
+  constant PH_Regfile2 : integer := 3;
+  -- latch value of the last source register
+  constant PH_Execute : integer := 4;
   -- Process operands by ALU/AGU/Shifter
   -- Calculate next PC for all instruction except conditional branches
-  constant PH_Branch  : integer := 4;
+  constant PH_Branch  : integer := 5;
   -- [Optional] used only by conditional branches
   -- Calculate next PC for conditional branches
-  constant PH_Memory_Address : integer := 5;
+  constant PH_Memory_Address : integer := 6;
   -- [Optional] used only by memory loads and stores
   -- Drive Data address/control signals on *_address buses
   -- Drive *_writedata and *_byteenable signals for stores
   -- For Avalon-mm accesses remain at this phase until fabric de-asserts avm_waitrequest signal
-  constant PH_Align : integer := 6;
+  constant PH_Align : integer := 7;
   -- [Optional] used only by memory loads
   -- Align and sign or zero-extend Load data
   -- For Avalon-mm accesses remain at this phase until fabric asserts avm_readdatavalid signal
@@ -77,14 +80,19 @@ architecture a of nios2ee is
   -- alias instr_imm5  : unsigned(4  downto 0) is tcm_readdata(10 downto  6); -- R-type
   -- alias instr_opx   : unsigned(5  downto 0) is tcm_readdata(16 downto 11); -- R-type
   alias instr_c     : unsigned(4  downto 0) is tcm_readdata(21 downto 17); -- R-type
-  -- alias instr_imm26 : unsigned(25 downto 0) is tcm_readdata(31 downto  6); -- J-type
+  alias instr_imm26 : unsigned(25 downto 0) is tcm_readdata(31 downto  6); -- J-type
 
-  signal instr_class  : instr_class_t;
+  signal instr_class, instr_class_reg : instr_class_t;
   signal srcreg_class : src_reg_class_t;
   signal dstreg_class : dest_reg_class_t;
+  signal imm16_class, imm16_class_reg : imm16_class_t;
   signal fu_op, fu_op_reg : natural range 0 to 15; -- ALU, shift or memory(LSU) unit internal opcode
-  signal reg_b, immx  : u32;
+  signal reg_a, reg_b : u32;
   signal fu_op_reg_u : unsigned(3 downto 0);
+  signal srcreg_class_a : boolean;
+  signal imm26 : unsigned(25 downto 0);
+  alias  imm16 : unsigned(15 downto 0) is tcm_readdata(15 downto  0); -- I-type
+  signal immx  : u32; -- imm16 field, properly extended to 32 bits
 
   -- ALU/AGU
   signal alu_op : natural range 0 to 15;
@@ -98,18 +106,20 @@ architecture a of nios2ee is
   -- register file
   type rf_t is array (natural range <>) of u32;
   signal rf : rf_t(0 to 31);
-  signal rf_q, rf_readdata : u32;
-  signal rf_wraddr : natural range 0 to 31;
-  signal rf_wren, rf_q_zero : boolean;
+  signal rf_readdata : u32;
+  signal rf_wraddr, instr_b_reg : natural range 0 to 31;
+  signal rf_wren : boolean;
   type rf_wrsel_t is (RF_WR_ALU, RF_WR_NEXTPC, RF_WR_SHIFTER);
   signal rf_wrsel : rf_wrsel_t;
+  attribute ramstyle : string;
+  attribute ramstyle of rf : signal is "no_rw_check";
 
   alias rf_readdata_h : unsigned(15 downto 0) is rf_readdata(15 downto 0);
   alias rf_readdata_b : unsigned(7 downto 0)  is rf_readdata(7 downto 0);
 
   signal is_tcm, is_tcm_reg : boolean;
   -- store data
-  signal writedata, dm_readdata : unsigned(31 downto 0);
+  signal writedata, dm_readdata, dm_readdata_reg : unsigned(31 downto 0);
   signal byteenable : std_logic_vector(3 downto 0);
   signal dm_address : std_logic_vector(CPU_ADDR_WIDTH-1 downto 0); -- 8-bit bytes
   signal dm_write, dm_read : std_logic;
@@ -124,18 +134,23 @@ begin
     instr_class  => instr_class , -- out instr_class_t;
     srcreg_class => srcreg_class, -- out src_reg_class_t;
     dstreg_class => dstreg_class, -- out dest_reg_class_t;
-    immx         => immx,         -- out unsigned(31 downto 0); -- immediate field, properly extended to 32 bits
+    imm16_class  => imm16_class,  -- out imm16_class_t;
     fu_op        => fu_op         -- out natural range 0 to 15  -- ALU, shift or memory(LSU) unit internal opcode
    );
   fu_op_reg_u <= to_unsigned(fu_op_reg, 4);
+  with imm16_class_reg select
+   immx <=
+     unsigned(resize(signed(imm16), 32)) when IMM16_CLASS_s16,
+     resize(imm16, 32)                   when IMM16_CLASS_z16,
+     resize(imm16, 32) sll 16            when others;
 
   -- ALU/AGU
-  alu_op <= ALU_OP_ADD when instr_class=INSTR_CLASS_MEMORY else fu_op_reg;
+  alu_op <= ALU_OP_ADD when instr_class_reg=INSTR_CLASS_MEMORY else fu_op_reg;
   a:entity work.n2alu
    generic map (DATA_WIDTH => 32)
    port map (
     op     => alu_op     , -- in  natural range 0 to 15;
-    a      => rf_readdata, -- in  unsigned(DATA_WIDTH-1 downto 0);
+    a      => reg_a      , -- in  unsigned(DATA_WIDTH-1 downto 0);
     b      => reg_b      , -- in  unsigned(DATA_WIDTH-1 downto 0);
     result => alu_result  -- out unsigned(DATA_WIDTH-1 downto 0)
    );
@@ -144,18 +159,18 @@ begin
   process (all)
   begin
     if phase=PH_Execute then
-      -- shift instructions
+      -- shift/rotate instructions
       sh_op_shift <= fu_op_reg_u(SHIFTER_OP_BIT_SHIFT);
       sh_op_left  <= fu_op_reg_u(SHIFTER_OP_BIT_LEFT);
       sh_op_arith <= fu_op_reg_u(SHIFTER_OP_BIT_ARITH);
-      sh_a        <= rf_readdata;
+      sh_a        <= reg_a;
       sh_b        <= reg_b(4 downto 0);
     else
       -- memory load instructions
       sh_op_shift <= '0';
       sh_op_left  <= '0';
       sh_op_arith <= '0';
-      sh_a        <= dm_readdata;
+      sh_a        <= dm_readdata_reg; -- TODO
       sh_b        <= to_unsigned(readdata_bi*8, 5);
     end if;
   end process;
@@ -191,18 +206,21 @@ begin
       sh_result_reg <= sh_result;
       case phase is
         when PH_Fetch =>
-          phase <= PH_Decode1;
+          phase <= PH_Decode;
 
-        when PH_Decode1 =>
+        when PH_Decode =>
           fu_op_reg <= fu_op;
-          phase  <= PH_Execute;
-          if srcreg_class=SRC_REG_CLASS_AB and instr_class /= INSTR_CLASS_MEMORY then
+          phase  <= PH_Regfile2;
+          if srcreg_class=SRC_REG_CLASS_AB then
             if instr_b /= 0 then
-              phase <= PH_Decode2;
+              phase <= PH_Regfile1;
             end if;
           end if;
 
-        when PH_Decode2 =>
+        when PH_Regfile1 =>
+          phase  <= PH_Regfile2;
+
+        when PH_Regfile2 =>
           phase  <= PH_Execute;
 
         when PH_Execute =>
@@ -210,9 +228,9 @@ begin
           phase   <= PH_Fetch;
           pc      <= next_pc;
           rf_wren <= true;
-          if instr_class=INSTR_CLASS_BRANCH then
+          if instr_class_reg=INSTR_CLASS_BRANCH then
             phase  <= PH_Branch;
-          elsif instr_class=INSTR_CLASS_MEMORY then
+          elsif instr_class_reg=INSTR_CLASS_MEMORY then
             phase   <= PH_Memory_Address;
             rf_wren <= false;
             if fu_op_reg_u(MEM_OP_BIT_STORE)='1' then
@@ -220,18 +238,18 @@ begin
             else
               dm_read  <= '1';
             end if;
-          elsif instr_class=INSTR_CLASS_JUMP then
-            if srcreg_class=SRC_REG_CLASS_A then
+          elsif instr_class_reg=INSTR_CLASS_JUMP then
+            if srcreg_class_a then
               pc <= rf_readdata(31 downto 2); -- indirect jumps, calls and returns
             else
               pc <= pc;
-              pc(27 downto 2) <= reg_b(25 downto 0); -- direct jumps and calls
+              pc(27 downto 2) <= imm26; -- direct jumps and calls
             end if;
           end if;
 
         when PH_Branch =>
           if alu_result_reg(0)='1' then
-            pc <= pc + unsigned(resize(signed(instr_imm16(15 downto 2)), 30)); -- branch taken
+            pc <= pc + unsigned(resize(signed(imm26(15 downto 2)), 30)); -- branch taken
           end if;
           phase  <= PH_Fetch;
 
@@ -273,24 +291,20 @@ begin
     if rising_edge(clk) then
 
       -- register file read address
-      rf_rdaddr := to_integer(instr_b);
+      rf_rdaddr := instr_b_reg;
       case phase is
-        when PH_Decode1 =>
-          reg_b <= immx;
+        when PH_Decode =>
+          instr_class_reg <= instr_class;
+          srcreg_class_a <= srcreg_class=SRC_REG_CLASS_A;
+          imm16_class_reg <= imm16_class;
+          instr_b_reg <= to_integer(instr_b);
+          imm26       <= instr_imm26;
           rf_rdaddr := to_integer(instr_a);
-          if srcreg_class=SRC_REG_CLASS_AB and instr_class /= INSTR_CLASS_MEMORY then
-            reg_b <= (others => '0');
+          if srcreg_class=SRC_REG_CLASS_AB then
             if instr_b /= 0 then
               rf_rdaddr := to_integer(instr_b);
             end if;
           end if;
-
-          case instr_class is
-            when INSTR_CLASS_JUMP   => rf_wrsel <= RF_WR_NEXTPC;
-            when INSTR_CLASS_SHIFT  => rf_wrsel <= RF_WR_SHIFTER;
-            when INSTR_CLASS_MEMORY => rf_wrsel <= RF_WR_SHIFTER;
-            when others             => rf_wrsel <= RF_WR_ALU;
-          end case;
 
           case dstreg_class is
             when DEST_REG_CLASS_CALL => rf_wraddr <= 31;                  -- ra==r31
@@ -299,9 +313,21 @@ begin
             when others              => rf_wraddr <= 0;                   -- no destination register
           end case;
 
-        when PH_Decode2 =>
+        when PH_Regfile1 =>
           rf_rdaddr := to_integer(instr_a);
-          reg_b <= rf_q; -- latch register B
+          reg_b <= rf_readdata; -- latch register B
+
+        when PH_Regfile2 =>
+          reg_a <= rf_readdata; -- latch register A
+          if srcreg_class_a then
+            reg_b <= immx;      -- type-I instructions except branches or shifts by immediate - the second source operand is immediate
+          end if;
+          case instr_class_reg is
+            when INSTR_CLASS_JUMP   => rf_wrsel <= RF_WR_NEXTPC;
+            when INSTR_CLASS_SHIFT  => rf_wrsel <= RF_WR_SHIFTER;
+            when INSTR_CLASS_MEMORY => rf_wrsel <= RF_WR_SHIFTER;
+            when others             => rf_wrsel <= RF_WR_ALU;
+          end case;
 
         when others =>
           null;
@@ -318,17 +344,16 @@ begin
           rf_d := alu_result_reg;
       end case;
 
-      if rf_wren then
+      if rf_wren and rf_wraddr/=0 then
         rf(rf_wraddr) <= rf_d;
       end if;
 
       -- register file read
-      rf_q <= rf(rf_rdaddr);
-      rf_q_zero <= rf_rdaddr=0;
+      rf_readdata <= rf(rf_rdaddr);
 
+      dm_readdata_reg <= dm_readdata; -- TODO
     end if;
   end process;
-  rf_readdata <= (others => '0') when rf_q_zero else rf_q;
 
   -- data bus address/writedata/byteenable/readdata_bi
   process (all)
@@ -362,9 +387,10 @@ begin
     is_tcm <= (to_integer(addr)/2**TCM_ADDR_WIDTH)=TCM_REGION_IDX;
   end process;
 
-  tcm_address <=
+  tcm_rdaddress <=
     dm_address(TCM_ADDR_WIDTH-1 downto 2) when phase=PH_Memory_Address else
     std_logic_vector(pc(TCM_ADDR_WIDTH-1 downto 2));
+  tcm_wraddress  <= dm_address(TCM_ADDR_WIDTH-1 downto 2);
   tcm_byteenable <= byteenable;
   tcm_writedata  <= std_logic_vector(writedata);
   tcm_write <= dm_write when is_tcm else '0';

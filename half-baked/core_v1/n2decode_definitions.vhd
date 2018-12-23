@@ -12,8 +12,8 @@ package n2decode_definitions is
   -- source register classes
   constant SRC_REG_CLASS_NONE   : integer := 0; -- no source registers
   constant SRC_REG_CLASS_NEXTPC : integer := 1; -- PC+4
-  constant SRC_REG_CLASS_A      : integer := 2; -- r[A]
-  constant SRC_REG_CLASS_AB     : integer := 3; -- r[A] and r[B]
+  constant SRC_REG_CLASS_A      : integer := 2; -- r[A] and stores
+  constant SRC_REG_CLASS_AB     : integer := 3; -- r[A] and r[B], except for stores
   subtype src_reg_class_t is natural range 0 to 3;
 
   -- destination register classes
@@ -22,5 +22,12 @@ package n2decode_definitions is
   constant DEST_REG_CLASS_B     : integer := 2; -- r[B]
   constant DEST_REG_CLASS_C     : integer := 3; -- r[C]
   subtype dest_reg_class_t is natural range 0 to 3;
+
+  -- immediate operand classes
+  type imm16_class_t is (
+    IMM16_CLASS_s16,   -- sign-extended IMM16
+    IMM16_CLASS_z16,   -- zero-extended IMM16
+    IMM16_CLASS_h16    -- IMM16 shifted by 16 to the left
+  );
 
 end package n2decode_definitions;
