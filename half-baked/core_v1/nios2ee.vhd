@@ -106,7 +106,7 @@ architecture a of nios2ee is
 
   -- ALU/AGU
   signal alu_op : natural range 0 to 15;
-  signal alu_result, alu_result_reg : u32;
+  signal alu_result : u32;
 
   -- shifter
   signal sh_op_shift, sh_op_left, sh_op_arith, byte_op_left, bysh_op_left : std_logic;
@@ -200,10 +200,12 @@ begin
   a:entity work.n2alu
    generic map (DATA_WIDTH => 32)
    port map (
+    clk    => clk        , -- in  std_logic;
+    start  => phase=PH_Execute, -- in  boolean;
     op     => alu_op     , -- in  natural range 0 to 15;
     a      => reg_a      , -- in  unsigned(DATA_WIDTH-1 downto 0);
     b      => reg_b      , -- in  unsigned(DATA_WIDTH-1 downto 0);
-    result => alu_result   -- out unsigned(DATA_WIDTH-1 downto 0)
+    result => alu_result   -- out unsigned(DATA_WIDTH-1 downto 0) -- available on the next clock after start
    );
 
   -- bit shifter - the first phase of full 32-bit shifter. Shift by (b mod 8)
@@ -250,7 +252,6 @@ begin
       PH_Decode      <= false;
       pc             <= to_unsigned(RESET_ADDR/4, 30);
       pc_msbits      <= (others => '0');
-      alu_result_reg <= (others => '0');
       dm_write       <= '0';
       dm_read        <= '0';
       rf_wren        <= false;
@@ -280,7 +281,6 @@ begin
             phase  <= PH_Execute;
 
           when PH_Execute =>
-            alu_result_reg <= alu_result;
             phase   <= PH_Fetch;
             rf_wren <= true;
             if instr_class=INSTR_CLASS_BRANCH then
@@ -302,7 +302,7 @@ begin
             end if;
 
           when PH_Branch =>
-            if alu_result_reg(0)='1' then
+            if alu_result(0)='1' then
               pc <= pc + reg_b(31 downto 2); -- branch taken
             end if;
             phase <= PH_Fetch;
@@ -391,7 +391,7 @@ begin
         when RF_WR_SHIFTER =>
           rf_d := sh_result;
         when others =>
-          rf_d := alu_result_reg;
+          rf_d := alu_result;
       end case;
 
       if rf_wren and rf_wraddr/=0 then
@@ -408,7 +408,7 @@ begin
     variable addr : u32;
     variable bi : natural range 0 to 3;
   begin
-    addr := alu_result_reg;
+    addr := alu_result;
     bi := to_integer(addr) mod 4;
     byteenable <= (others => '0');
     case fu_op_reg_i mod 4 is
