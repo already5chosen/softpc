@@ -39,45 +39,41 @@ use work.memory_opcodes.all;
 
 architecture a of nios2ee is
   -- processing phases
-  constant PH_Fetch : integer := 0;
+  signal PH_Fetch : boolean := true;
   -- Drive instruction address on tcm_rdaddress.
   -- Write result of the previous instruction into register file.
   -- Increment PC
 
-  -- PH_Decode - encoded by separate signal
+  signal PH_Decode : boolean;
   -- Drive register file address with index of register A
   -- Latch instruction word
 
-  constant PH_Regfile1 : integer := 1;
+  signal PH_Regfile1 : boolean;
   -- Start to drive register file address with index of register B
   -- Latch value of register A
 
-  constant PH_Regfile2 : integer := 2;
+  signal PH_Regfile2 : boolean;
   -- [Optional] used by instructions with 2 register sources except for integer stores
   -- Latch value of register A
 
-  constant PH_Execute : integer := 3;
+  signal PH_Execute : boolean;
   -- Process operands by ALU/AGU/Shifter
   -- Calculate next PC for all instruction except conditional branches
 
-  constant PH_Branch  : integer := 4;
+  signal PH_Branch  : boolean;
   -- [Optional] used only by conditional branches
   -- Calculate next PC for conditional branches
 
-  constant PH_Memory_Address : integer := 5;
+  signal PH_Memory_Address : boolean;
   -- [Optional] used only by memory loads and stores
   -- Drive Data address/control signals on *_address buses
   -- Drive *_writedata and *_byteenable signals for stores
   -- For Avalon-mm accesses remain at this phase until fabric de-asserts avm_waitrequest signal
 
-  constant PH_Memory_Data : integer := 6;
+  signal PH_Memory_Data : boolean;
   -- [Optional] used only by memory loads
   -- Align and sign or zero-extend Load data
   -- For Avalon-mm accesses remain at this phase until fabric asserts avm_readdatavalid signal
-
-  subtype phase_t is natural range 0 to PH_Memory_Data;
-  signal phase : phase_t;
-  signal PH_Decode : boolean;
 
   subtype u32 is unsigned(31 downto 0);
   signal pc    : unsigned(31 downto 2) := to_unsigned(RESET_ADDR/4, 30);
@@ -201,7 +197,7 @@ begin
    generic map (DATA_WIDTH => 32)
    port map (
     clk    => clk        , -- in  std_logic;
-    start  => phase=PH_Execute, -- in  boolean;
+    start  => PH_Execute , -- in  boolean;
     op     => alu_op     , -- in  natural range 0 to 15;
     a      => reg_a      , -- in  unsigned(DATA_WIDTH-1 downto 0);
     b      => reg_b      , -- in  unsigned(DATA_WIDTH-1 downto 0);
@@ -227,7 +223,7 @@ begin
   begin
     if rising_edge(clk) then
       bysh_a <= bish_result;
-      if phase = PH_Memory_Data then
+      if PH_Memory_Data then
          bysh_a <= dm_readdata;
       end if;
     end if;
@@ -248,8 +244,14 @@ begin
   process (clk, reset)
   begin
     if reset='1' then
-      phase          <= PH_Fetch;
-      PH_Decode      <= false;
+      PH_Fetch          <= true;
+      PH_Decode         <= false;
+      PH_Regfile1       <= false;
+      PH_Regfile2       <= false;
+      PH_Execute        <= false;
+      PH_Branch         <= false;
+      PH_Memory_Address <= false;
+      PH_Memory_Data    <= false;
       pc             <= to_unsigned(RESET_ADDR/4, 30);
       pc_msbits      <= (others => '0');
       dm_write       <= '0';
@@ -261,79 +263,90 @@ begin
       dm_read  <= '0';
       rf_wren  <= false;
 
-      PH_Decode <= false;
-      if not PH_Decode then
-        case phase is
-          when PH_Fetch =>
-            PH_Decode <= true;
-            phase     <= PH_Regfile1;
-            pc        <= pc + 1;
-            pc_msbits <= pc(31 downto 28);
+      PH_Fetch          <= false;
+      PH_Decode         <= false;
+      PH_Regfile1       <= false;
+      PH_Regfile2       <= false;
+      PH_Execute        <= false;
+      PH_Branch         <= false;
+      PH_Memory_Address <= false;
+      PH_Memory_Data    <= false;
 
-          when PH_Regfile1 =>
-            if srcreg_class=SRC_REG_CLASS_AB and instr_b/=0 then
-              phase  <= PH_Regfile2;
-            else
-              phase  <= PH_Execute;
-            end if;
+      if PH_Fetch then
+        pc        <= pc + 1;
+        pc_msbits <= pc(31 downto 28);
+      end if;
+      PH_Decode   <= PH_Fetch;
+      PH_Regfile1 <= PH_Decode;
 
-          when PH_Regfile2 =>
-            phase  <= PH_Execute;
-
-          when PH_Execute =>
-            phase   <= PH_Fetch;
-            rf_wren <= true;
-            if instr_class=INSTR_CLASS_BRANCH then
-              phase <= PH_Branch;
-            elsif instr_class=INSTR_CLASS_MEMORY then
-              phase <= PH_Memory_Address;
-              rf_wren <= false;
-              if fu_op_reg_u(MEM_OP_BIT_STORE)='1' then
-                dm_write <= '1';
-              else
-                dm_read  <= '1';
-              end if;
-            elsif instr_class=INSTR_CLASS_JUMP then
-              if srcreg_class=SRC_REG_CLASS_A then
-                pc <= reg_a(31 downto 2);      -- indirect jumps, calls and returns
-              else
-                pc <= pc_msbits & instr_imm26; -- direct jumps and calls
-              end if;
-            end if;
-
-          when PH_Branch =>
-            if alu_result(0)='1' then
-              pc <= pc + reg_b(31 downto 2); -- branch taken
-            end if;
-            phase <= PH_Fetch;
-
-          when PH_Memory_Address =>
-            dm_write <= dm_write;
-            dm_read  <= dm_read;
-            is_tcm_reg <= is_tcm;
-            if is_tcm or avm_waitrequest='0' then
-              dm_write <= '0';
-              dm_read  <= '0';
-              phase    <= PH_Fetch;
-              if dm_read='1' then
-                -- TODO - case of avm read with latency=0
-                phase  <= PH_Memory_Data;
-              end if;
-            end if;
-
-          when PH_Memory_Data =>
-            if is_tcm_reg or avm_readdatavalid='1' then
-              rf_wren <= true;
-              phase   <= PH_Fetch;
-            end if;
-
-          when others =>
-            -- should never come here
-            phase <= PH_Fetch;
-            pc    <= to_unsigned(RESET_ADDR/4, 30);
-        end case;
+      if PH_Regfile1 then
+        if srcreg_class=SRC_REG_CLASS_AB and instr_b/=0 then
+          PH_Regfile2 <= true;
+        else
+          PH_Execute  <= true;
+        end if;
       end if;
 
+      if PH_Regfile2 then
+        PH_Execute <= true;
+      end if;
+
+      if PH_Execute then
+        if instr_class=INSTR_CLASS_BRANCH then
+          PH_Branch <= true;
+        elsif instr_class=INSTR_CLASS_MEMORY then
+          PH_Memory_Address <= true;
+          if fu_op_reg_u(MEM_OP_BIT_STORE)='1' then
+            dm_write <= '1';
+          else
+            dm_read  <= '1';
+          end if;
+        else
+          PH_Fetch <= true;
+          rf_wren  <= true;
+          if instr_class=INSTR_CLASS_JUMP then
+            if srcreg_class=SRC_REG_CLASS_A then
+              pc <= reg_a(31 downto 2);      -- indirect jumps, calls and returns
+            else
+              pc <= pc_msbits & instr_imm26; -- direct jumps and calls
+            end if;
+          end if;
+        end if;
+      end if;
+
+      if PH_Branch then
+        if alu_result(0)='1' then
+          pc <= pc + reg_b(31 downto 2); -- branch taken
+        end if;
+        PH_Fetch <= true;
+      end if;
+
+      if PH_Memory_Address then
+        dm_write   <= dm_write;
+        dm_read    <= dm_read;
+        is_tcm_reg <= is_tcm;
+        PH_Memory_Address <= true;
+        if is_tcm or avm_waitrequest='0' then
+          dm_write <= '0';
+          dm_read  <= '0';
+          PH_Memory_Address <= false;
+          if dm_read='0' then
+            PH_Fetch <= true;
+          else
+            -- TODO - case of avm read with latency=0
+            PH_Memory_Data <= true;
+          end if;
+        end if;
+      end if;
+
+      if PH_Memory_Data then
+        if is_tcm_reg or avm_readdatavalid='1' then
+          rf_wren <= true;
+          PH_Fetch <= true;
+        else
+          PH_Memory_Data <= true;
+        end if;
+      end if;
 
     end if;
   end process;
@@ -347,28 +360,26 @@ begin
 
       fu_op_reg_i <= fu_op_i;
       -- register file read address
+      rf_rdaddr := to_integer(instr_b);
       if PH_Decode then
         rf_rdaddr := to_integer(instr_a);
         instr_s2 <= instr_s1;
-      else
-        rf_rdaddr := to_integer(instr_b);
-        case phase is
-          when PH_Regfile1 =>
-            reg_a <= rf_readdata; -- latch register A
-            reg_b <= immx;        -- type-I instructions except branches or shifts by immediate - the second source operand is immediate
-            if srcreg_class=SRC_REG_CLASS_AB then
-              reg_b <= (others => '0');
-            end if;
+      end if;
 
-          when PH_Regfile2 =>
-            reg_b <= rf_readdata; -- latch register B
+      if PH_Regfile1 then
+        reg_a <= rf_readdata; -- latch register A
+        reg_b <= immx;        -- type-I instructions except branches or shifts by immediate - the second source operand is immediate
+        if srcreg_class=SRC_REG_CLASS_AB then
+          reg_b <= (others => '0');
+        end if;
+      end if;
 
-          when PH_Execute =>
-            reg_b <= immx;        -- for branches
+      if PH_Regfile2 then
+        reg_b <= rf_readdata; -- latch register B
+      end if;
 
-          when others =>
-            null;
-        end case;
+      if PH_Execute then
+        reg_b <= immx;        -- for branches
       end if;
 
       -- register file write
@@ -436,7 +447,7 @@ begin
   end process;
 
   tcm_rdaddress <=
-    dm_address(TCM_ADDR_WIDTH-1 downto 2) when phase=PH_Memory_Address else
+    dm_address(TCM_ADDR_WIDTH-1 downto 2) when PH_Memory_Address else
     std_logic_vector(pc(TCM_ADDR_WIDTH-1 downto 2));
   tcm_wraddress  <= dm_address(TCM_ADDR_WIDTH-1 downto 2);
   tcm_byteenable <= byteenable;
