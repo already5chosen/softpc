@@ -289,6 +289,7 @@ begin
         else
           PH_Execute  <= true;
         end if;
+        rf_wren <= dstreg_class=DEST_REG_CLASS_CALL;
       end if;
 
       if PH_Regfile2 then
@@ -307,13 +308,14 @@ begin
           end if;
         else
           PH_Fetch <= true;
-          rf_wren  <= true;
           if instr_class=INSTR_CLASS_JUMP then
             if srcreg_class=SRC_REG_CLASS_A then
               pc <= reg_a(31 downto 2);      -- indirect jumps, calls and returns
             else
               pc <= pc_msbits & instr_imm26; -- direct jumps and calls
             end if;
+          else
+            rf_wren  <= true;
           end if;
         end if;
       end if;
