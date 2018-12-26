@@ -109,9 +109,10 @@ architecture a of nios2ee is
   signal alu_result, alu_result_reg : u32;
 
   -- shifter
-  signal sh_op_shift, sh_op_left, sh_op_arith : std_logic;
-  signal sh_a, sh_result, sh_result_reg : u32;
-  signal sh_b :  unsigned(4 downto 0);
+  signal sh_op_shift, sh_op_left, sh_op_arith, byte_op_left, bysh_op_left : std_logic;
+  signal byte_b_lsbits, bysh_b_lsbits : boolean;
+  signal bysh_op_align, byte_rshift, bysh_rshift : unsigned(1 downto 0);
+  signal bish_result, bysh_a, sh_result : u32;
 
   -- register file
   type rf_t is array (natural range <>) of u32;
@@ -132,7 +133,7 @@ architecture a of nios2ee is
   -- memory access signals
   signal is_tcm, is_tcm_reg : boolean;
   -- store data
-  signal writedata, dm_readdata, dm_readdata_reg : unsigned(31 downto 0);
+  signal writedata, dm_readdata : unsigned(31 downto 0);
   signal byteenable : std_logic_vector(3 downto 0);
   signal dm_address : std_logic_vector(CPU_ADDR_WIDTH-1 downto 0); -- 8-bit bytes
   signal dm_write, dm_read : std_logic;
@@ -140,7 +141,7 @@ architecture a of nios2ee is
 
 begin
 
-  -- instruction decoder, results available in PH_Regfile1 stage 
+  -- instruction decoder, results available in PH_Regfile1 stage
   d:entity work.n2decode
    port map (
     instruction  => instr_s2,     -- in  unsigned(31 downto 0);
@@ -168,21 +169,33 @@ begin
       else
         alu_op <= fu_op_i;     -- ALU
       end if;
-      
+
       -- shifter/Load alignment
+      sh_op_left <= fu_op_u(SHIFTER_OP_BIT_LEFT);
       if instr_class=INSTR_CLASS_MEMORY then
-        sh_op_shift <= '0'; -- Load alignment
-        sh_op_left  <= '0';
-        sh_op_arith <= '0';
+        -- Load alignment
+        case fu_op_i mod 4 is
+          when MEM_OP_B => bysh_op_align <= "11";
+          when MEM_OP_H => bysh_op_align <= "10";
+          when others   => bysh_op_align <= "00";
+        end case;
+        bysh_rshift   <= to_unsigned(readdata_bi, 2);
+        sh_op_shift   <= '0';
+        sh_op_arith   <= fu_op_u(MEM_OP_BIT_UNS);
+        bysh_b_lsbits <= false;
+        bysh_op_left  <= '0';
       else
         -- shift/rotate instructions
-        sh_op_shift <= fu_op_u(SHIFTER_OP_BIT_SHIFT);
-        sh_op_left  <= fu_op_u(SHIFTER_OP_BIT_LEFT);
-        sh_op_arith <= fu_op_u(SHIFTER_OP_BIT_ARITH);
+        bysh_op_align <= "00";
+        bysh_rshift   <= byte_rshift;
+        sh_op_shift   <= fu_op_u(SHIFTER_OP_BIT_SHIFT);
+        sh_op_arith   <= fu_op_u(SHIFTER_OP_BIT_ARITH);
+        bysh_b_lsbits <= byte_b_lsbits;
+        bysh_op_left  <= byte_op_left;
       end if;
     end if;
   end process;
-     
+
   -- ALU/AGU
   a:entity work.n2alu
    generic map (DATA_WIDTH => 32)
@@ -193,28 +206,41 @@ begin
     result => alu_result   -- out unsigned(DATA_WIDTH-1 downto 0)
    );
 
-  -- shifter (also used for alignment of load data)
-  process (all)
-  begin
-    if phase=PH_Execute then
-      -- shift/rotate instructions
-      sh_a        <= reg_a;
-      sh_b        <= reg_b(4 downto 0);
-    else
-      -- memory load instructions
-      sh_a        <= dm_readdata_reg; -- TODO
-      sh_b        <= to_unsigned(readdata_bi*8, 5);
-    end if;
-  end process;
-  sh:entity work.n2shifter
+  -- bit shifter - the first phase of full 32-bit shifter. Shift by (b mod 8)
+  bish:entity work.n2bit_shifter
    generic map (DATA_WIDTH => 32, B_WIDTH => 5 )
    port map (
-    op_shift => sh_op_shift, -- in std_logic; -- '0' - rotate,      '1' - shift
-    op_left  => sh_op_left , -- in std_logic; -- '0' - shift right, '1' - shift left
-    op_arith => sh_op_arith, -- in std_logic; -- '0' - arithmetic,  '1' - logical (applicable when op_shift='1' and op_left='0')
-    a        => sh_a,        -- in  unsigned(DATA_WIDTH-1 downto 0);
-    b        => sh_b,        -- in  unsigned(B_WIDTH-1    downto 0);
-    result   => sh_result    -- out unsigned(DATA_WIDTH-1 downto 0)
+    op_shift      => sh_op_shift,       -- in std_logic; -- '0' - rotate,      '1' - shift
+    op_left       => sh_op_left ,       -- in std_logic; -- '0' - shift right, '1' - shift left
+    op_arith      => sh_op_arith,       -- in std_logic; -- '0' - arithmetic,  '1' - logical (applicable when op_shift='1' and op_left='0')
+    a             => reg_a,             -- in  unsigned(DATA_WIDTH-1 downto 0);
+    b             => reg_b(4 downto 0), -- in  unsigned(B_WIDTH-1    downto 0);
+    byte_rshift   => byte_rshift  ,     -- out unsigned(B_WIDTH-4 downto 0);    -- right shift signal for n2byte_shifter
+    byte_b_lsbits => byte_b_lsbits,     -- out boolean;                         -- (b % 8) /= 0 for n2byte_shifter
+    byte_op_left  => byte_op_left ,     -- out std_logic                        -- op_left for n2byte_shifter
+    result        => bish_result        -- out unsigned(DATA_WIDTH-1 downto 0)
+  );
+  -- byte shifter (also used for alignment of load data)
+  process (clk)
+  begin
+    if rising_edge(clk) then
+      bysh_a <= bish_result;
+      if phase = PH_Memory_Data then
+         bysh_a <= dm_readdata;
+      end if;
+    end if;
+  end process;
+  bysh:entity work.n2byte_shifter
+   generic map (DATA_WIDTH => 32, B_WIDTH => 5 )
+   port map (
+    op_align => bysh_op_align, -- in  unsigned(1 downto 0); -- '00' - shift/rotate, '10' - 16-bit align, '11' - 8-bit align
+    op_shift => sh_op_shift  , -- in  std_logic; -- '0' - rotate,      '1' - shift
+    op_left  => bysh_op_left , -- in  std_logic; -- '0' - shift right, '1' - shift left
+    op_arith => sh_op_arith  , -- in  std_logic; -- '0' - arithmetic,  '1' - logical (applicable when op_shift='1' and op_left='0')
+    a        => bysh_a       , -- in  unsigned(DATA_WIDTH-1 downto 0);
+    rshift   => bysh_rshift  , -- in  unsigned(B_WIDTH-1    downto 3);
+    b_lsbits => bysh_b_lsbits, -- in  boolean;   -- (b % 8) /= 0, to restore original b for use by left shifts
+    result   => sh_result      -- out unsigned(DATA_WIDTH-1 downto 0)
   );
 
   process (clk, reset)
@@ -225,7 +251,6 @@ begin
       pc             <= to_unsigned(RESET_ADDR/4, 30);
       pc_msbits      <= (others => '0');
       alu_result_reg <= (others => '0');
-      sh_result_reg  <= (others => '0');
       dm_write       <= '0';
       dm_read        <= '0';
       rf_wren        <= false;
@@ -234,7 +259,6 @@ begin
       dm_write <= '0';
       dm_read  <= '0';
       rf_wren  <= false;
-      sh_result_reg <= sh_result;
 
       PH_Decode <= false;
       if not PH_Decode then
@@ -365,7 +389,7 @@ begin
           rf_d(31 downto 2) := pc;
           rf_d(1 downto 0)  := (others => '0');
         when RF_WR_SHIFTER =>
-          rf_d := sh_result_reg;
+          rf_d := sh_result;
         when others =>
           rf_d := alu_result_reg;
       end case;
@@ -376,8 +400,6 @@ begin
 
       -- register file read
       rf_readdata <= rf(rf_rdaddr);
-
-      dm_readdata_reg <= dm_readdata; -- TODO
     end if;
   end process;
 
