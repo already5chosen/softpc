@@ -102,7 +102,8 @@ architecture a of nios2ee is
 
   -- ALU/AGU
   signal alu_op : natural range 0 to 15;
-  signal alu_result : u32;
+  signal alu_result, agu_result : u32;
+  signal cmp_result : boolean; -- for branches
 
   -- shifter
   signal sh_op_shift, sh_op_left, sh_op_arith, byte_op_left, bysh_op_left : std_logic;
@@ -201,7 +202,10 @@ begin
     op     => alu_op     , -- in  natural range 0 to 15;
     a      => reg_a      , -- in  unsigned(DATA_WIDTH-1 downto 0);
     b      => reg_b      , -- in  unsigned(DATA_WIDTH-1 downto 0);
-    result => alu_result   -- out unsigned(DATA_WIDTH-1 downto 0) -- available on the next clock after start
+    -- results are available on the next clock after start
+    result     => alu_result, -- out unsigned(DATA_WIDTH-1 downto 0)
+    agu_result => agu_result, -- out unsigned(DATA_WIDTH-1 downto 0)
+    cmp_result => cmp_result  -- buffer boolean -- for branches
    );
 
   -- bit shifter - the first phase of full 32-bit shifter. Shift by (b mod 8)
@@ -315,7 +319,7 @@ begin
       end if;
 
       if PH_Branch then
-        if alu_result(0)='1' then
+        if cmp_result then
           pc <= pc + reg_b(31 downto 2); -- branch taken
         end if;
         PH_Fetch <= true;
@@ -419,7 +423,7 @@ begin
     variable addr : u32;
     variable bi : natural range 0 to 3;
   begin
-    addr := alu_result;
+    addr := agu_result;
     bi := to_integer(addr) mod 4;
     byteenable <= (others => '0');
     case fu_op_reg_i mod 4 is
