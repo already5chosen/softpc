@@ -5,7 +5,11 @@ use work.n2decode_definitions.all;
 
 entity n2decode is
  port (
+  clk          : in  std_logic;
+  start        : in  boolean;
   instruction  : in  unsigned(31 downto 0);
+  -- decode results are available on the next clock after start
+  r_type       : buffer boolean;
   instr_class  : out instr_class_t;
   srcreg_class : out src_reg_class_t;
   dstreg_class : out dest_reg_class_t;
@@ -22,14 +26,31 @@ use work.memory_opcodes.all;
 architecture a of n2decode is
   -- instruction fields
   alias op    : unsigned(5  downto 0) is instruction( 5 downto  0);
-  alias imm16 : unsigned(15 downto 0) is instruction(21 downto  6); -- I-type
-  alias b     : unsigned(4  downto 0) is instruction(26 downto 22); -- I-type and R-type
-  alias a     : unsigned(4  downto 0) is instruction(31 downto 27); -- I-type and R-type
-  alias imm5  : unsigned(4  downto 0) is instruction(10 downto  6); -- R-type
+  -- alias imm16 : unsigned(15 downto 0) is instruction(21 downto  6); -- I-type
+  -- alias b     : unsigned(4  downto 0) is instruction(26 downto 22); -- I-type and R-type
+  -- alias a     : unsigned(4  downto 0) is instruction(31 downto 27); -- I-type and R-type
+  -- alias imm5  : unsigned(4  downto 0) is instruction(10 downto  6); -- R-type
   alias opx   : unsigned(5  downto 0) is instruction(16 downto 11); -- R-type
-  alias c     : unsigned(4  downto 0) is instruction(21 downto 17); -- R-type
-  alias imm26 : unsigned(25 downto 0) is instruction(31 downto  6); -- J-type
+  -- alias c     : unsigned(4  downto 0) is instruction(21 downto 17); -- R-type
+  -- alias imm26 : unsigned(25 downto 0) is instruction(31 downto  6); -- J-type
+  
+  signal op_reg : unsigned(5  downto 0);
 begin
+
+  process (clk)
+  begin
+    if rising_edge(clk) then
+      if start then
+        op_reg <= op;
+        r_type <= false;
+        if op=OP_RTYPE then
+          r_type <= true;
+          op_reg <= opx;
+        end if;
+      end if;
+    end if;
+  end process;
+
   process(all)
   begin
 
@@ -39,267 +60,269 @@ begin
     dstreg_class <= DEST_REG_CLASS_NONE;
     fu_op        <= 0;
 
-    case to_integer(op) is
-      when OP_CALL =>
-        instr_class  <= INSTR_CLASS_JUMP;
-        dstreg_class <= DEST_REG_CLASS_CALL;
+    if not r_type then 
+      case to_integer(op_reg) is
+        when OP_CALL =>
+          instr_class  <= INSTR_CLASS_JUMP;
+          dstreg_class <= DEST_REG_CLASS_CALL;
 
-      when OP_JMPI =>
-        instr_class  <= INSTR_CLASS_JUMP;
+        when OP_JMPI =>
+          instr_class  <= INSTR_CLASS_JUMP;
 
-      when OP_LDBU  =>
-        instr_class  <= INSTR_CLASS_MEMORY;
-        srcreg_class <= SRC_REG_CLASS_A;
-        imm16_class  <= IMM16_CLASS_s16;
-        dstreg_class <= DEST_REG_CLASS_B;
-        fu_op        <= MEM_OP_LDBU;
+        when OP_LDBU  =>
+          instr_class  <= INSTR_CLASS_MEMORY;
+          srcreg_class <= SRC_REG_CLASS_A;
+          imm16_class  <= IMM16_CLASS_s16;
+          dstreg_class <= DEST_REG_CLASS_B;
+          fu_op        <= MEM_OP_LDBU;
 
-      when OP_ADDI  =>
-        srcreg_class <= SRC_REG_CLASS_A;
-        imm16_class  <= IMM16_CLASS_s16;
-        dstreg_class <= DEST_REG_CLASS_B;
-        fu_op        <= ALU_OP_ADD;
+        when OP_ADDI  =>
+          srcreg_class <= SRC_REG_CLASS_A;
+          imm16_class  <= IMM16_CLASS_s16;
+          dstreg_class <= DEST_REG_CLASS_B;
+          fu_op        <= ALU_OP_ADD;
 
-      when OP_STB   =>
-        instr_class  <= INSTR_CLASS_MEMORY;
-        srcreg_class <= SRC_REG_CLASS_A;
-        imm16_class  <= IMM16_CLASS_s16;
-        fu_op        <= MEM_OP_STB;
+        when OP_STB   =>
+          instr_class  <= INSTR_CLASS_MEMORY;
+          srcreg_class <= SRC_REG_CLASS_A;
+          imm16_class  <= IMM16_CLASS_s16;
+          fu_op        <= MEM_OP_STB;
 
-      when OP_BR    =>
-        instr_class  <= INSTR_CLASS_BRANCH;
-        imm16_class  <= IMM16_CLASS_s16;
-        fu_op        <= ALU_OP_TRUE;
+        when OP_BR    =>
+          instr_class  <= INSTR_CLASS_BRANCH;
+          imm16_class  <= IMM16_CLASS_s16;
+          fu_op        <= ALU_OP_TRUE;
 
-      when OP_LDB   =>
-        instr_class  <= INSTR_CLASS_MEMORY;
-        srcreg_class <= SRC_REG_CLASS_A;
-        imm16_class  <= IMM16_CLASS_s16;
-        dstreg_class <= DEST_REG_CLASS_B;
-        fu_op        <= MEM_OP_LDB;
+        when OP_LDB   =>
+          instr_class  <= INSTR_CLASS_MEMORY;
+          srcreg_class <= SRC_REG_CLASS_A;
+          imm16_class  <= IMM16_CLASS_s16;
+          dstreg_class <= DEST_REG_CLASS_B;
+          fu_op        <= MEM_OP_LDB;
 
-      when OP_CMPGEI =>
-        srcreg_class <= SRC_REG_CLASS_A;
-        imm16_class  <= IMM16_CLASS_s16;
-        dstreg_class <= DEST_REG_CLASS_B;
-        fu_op        <= ALU_OP_CMPGE;
+        when OP_CMPGEI =>
+          srcreg_class <= SRC_REG_CLASS_A;
+          imm16_class  <= IMM16_CLASS_s16;
+          dstreg_class <= DEST_REG_CLASS_B;
+          fu_op        <= ALU_OP_CMPGE;
 
-      when OP_LDHU  =>
-        instr_class  <= INSTR_CLASS_MEMORY;
-        srcreg_class <= SRC_REG_CLASS_A;
-        imm16_class  <= IMM16_CLASS_s16;
-        dstreg_class <= DEST_REG_CLASS_B;
-        fu_op        <= MEM_OP_LDHU;
+        when OP_LDHU  =>
+          instr_class  <= INSTR_CLASS_MEMORY;
+          srcreg_class <= SRC_REG_CLASS_A;
+          imm16_class  <= IMM16_CLASS_s16;
+          dstreg_class <= DEST_REG_CLASS_B;
+          fu_op        <= MEM_OP_LDHU;
 
-      when OP_ANDI  =>
-        srcreg_class <= SRC_REG_CLASS_A;
-        dstreg_class <= DEST_REG_CLASS_B;
-        fu_op        <= ALU_OP_AND;
+        when OP_ANDI  =>
+          srcreg_class <= SRC_REG_CLASS_A;
+          dstreg_class <= DEST_REG_CLASS_B;
+          fu_op        <= ALU_OP_AND;
 
-      when OP_STH   =>
-        instr_class  <= INSTR_CLASS_MEMORY;
-        srcreg_class <= SRC_REG_CLASS_A;
-        imm16_class  <= IMM16_CLASS_s16;
-        fu_op        <= MEM_OP_STH;
+        when OP_STH   =>
+          instr_class  <= INSTR_CLASS_MEMORY;
+          srcreg_class <= SRC_REG_CLASS_A;
+          imm16_class  <= IMM16_CLASS_s16;
+          fu_op        <= MEM_OP_STH;
 
-      when OP_BGE   =>
-        instr_class  <= INSTR_CLASS_BRANCH;
-        srcreg_class <= SRC_REG_CLASS_AB;
-        imm16_class  <= IMM16_CLASS_s16;
-        fu_op        <= ALU_OP_CMPGE;
+        when OP_BGE   =>
+          instr_class  <= INSTR_CLASS_BRANCH;
+          srcreg_class <= SRC_REG_CLASS_AB;
+          imm16_class  <= IMM16_CLASS_s16;
+          fu_op        <= ALU_OP_CMPGE;
 
-      when OP_LDH   =>
-        instr_class  <= INSTR_CLASS_MEMORY;
-        srcreg_class <= SRC_REG_CLASS_A;
-        imm16_class  <= IMM16_CLASS_s16;
-        dstreg_class <= DEST_REG_CLASS_B;
-        fu_op        <= MEM_OP_LDH;
+        when OP_LDH   =>
+          instr_class  <= INSTR_CLASS_MEMORY;
+          srcreg_class <= SRC_REG_CLASS_A;
+          imm16_class  <= IMM16_CLASS_s16;
+          dstreg_class <= DEST_REG_CLASS_B;
+          fu_op        <= MEM_OP_LDH;
 
-      when OP_CMPLTI  =>
-        srcreg_class <= SRC_REG_CLASS_A;
-        imm16_class  <= IMM16_CLASS_s16;
-        dstreg_class <= DEST_REG_CLASS_B;
-        fu_op        <= ALU_OP_CMPLT;
+        when OP_CMPLTI  =>
+          srcreg_class <= SRC_REG_CLASS_A;
+          imm16_class  <= IMM16_CLASS_s16;
+          dstreg_class <= DEST_REG_CLASS_B;
+          fu_op        <= ALU_OP_CMPLT;
 
-      when OP_INITDA  =>
-        null;
+        when OP_INITDA  =>
+          null;
 
-      when OP_ORI     =>
-        srcreg_class <= SRC_REG_CLASS_A;
-        dstreg_class <= DEST_REG_CLASS_B;
-        fu_op        <= ALU_OP_OR;
+        when OP_ORI     =>
+          srcreg_class <= SRC_REG_CLASS_A;
+          dstreg_class <= DEST_REG_CLASS_B;
+          fu_op        <= ALU_OP_OR;
 
-      when OP_STW     =>
-        instr_class  <= INSTR_CLASS_MEMORY;
-        srcreg_class <= SRC_REG_CLASS_A;
-        imm16_class  <= IMM16_CLASS_s16;
-        fu_op        <= MEM_OP_STW;
+        when OP_STW     =>
+          instr_class  <= INSTR_CLASS_MEMORY;
+          srcreg_class <= SRC_REG_CLASS_A;
+          imm16_class  <= IMM16_CLASS_s16;
+          fu_op        <= MEM_OP_STW;
 
-      when OP_BLT     =>
-        instr_class  <= INSTR_CLASS_BRANCH;
-        srcreg_class <= SRC_REG_CLASS_AB;
-        imm16_class  <= IMM16_CLASS_s16;
-        fu_op        <= ALU_OP_CMPLT;
+        when OP_BLT     =>
+          instr_class  <= INSTR_CLASS_BRANCH;
+          srcreg_class <= SRC_REG_CLASS_AB;
+          imm16_class  <= IMM16_CLASS_s16;
+          fu_op        <= ALU_OP_CMPLT;
 
-      when OP_LDW     =>
-        instr_class  <= INSTR_CLASS_MEMORY;
-        srcreg_class <= SRC_REG_CLASS_A;
-        imm16_class  <= IMM16_CLASS_s16;
-        dstreg_class <= DEST_REG_CLASS_B;
-        fu_op        <= MEM_OP_LDW;
+        when OP_LDW     =>
+          instr_class  <= INSTR_CLASS_MEMORY;
+          srcreg_class <= SRC_REG_CLASS_A;
+          imm16_class  <= IMM16_CLASS_s16;
+          dstreg_class <= DEST_REG_CLASS_B;
+          fu_op        <= MEM_OP_LDW;
 
-      when OP_CMPNEI  =>
-        srcreg_class <= SRC_REG_CLASS_A;
-        imm16_class  <= IMM16_CLASS_s16;
-        dstreg_class <= DEST_REG_CLASS_B;
-        fu_op        <= ALU_OP_CMPNE;
+        when OP_CMPNEI  =>
+          srcreg_class <= SRC_REG_CLASS_A;
+          imm16_class  <= IMM16_CLASS_s16;
+          dstreg_class <= DEST_REG_CLASS_B;
+          fu_op        <= ALU_OP_CMPNE;
 
-      when OP_FLUSHDA =>
-        null;
+        when OP_FLUSHDA =>
+          null;
 
-      when OP_XORI    =>
-        srcreg_class <= SRC_REG_CLASS_A;
-        dstreg_class <= DEST_REG_CLASS_B;
-        fu_op        <= ALU_OP_XOR;
+        when OP_XORI    =>
+          srcreg_class <= SRC_REG_CLASS_A;
+          dstreg_class <= DEST_REG_CLASS_B;
+          fu_op        <= ALU_OP_XOR;
 
-      when OP_BNE     =>
-        instr_class  <= INSTR_CLASS_BRANCH;
-        srcreg_class <= SRC_REG_CLASS_AB;
-        imm16_class  <= IMM16_CLASS_s16;
-        fu_op        <= ALU_OP_CMPNE;
+        when OP_BNE     =>
+          instr_class  <= INSTR_CLASS_BRANCH;
+          srcreg_class <= SRC_REG_CLASS_AB;
+          imm16_class  <= IMM16_CLASS_s16;
+          fu_op        <= ALU_OP_CMPNE;
 
-      when OP_CMPEQI  =>
-        srcreg_class <= SRC_REG_CLASS_A;
-        imm16_class  <= IMM16_CLASS_s16;
-        dstreg_class <= DEST_REG_CLASS_B;
-        fu_op        <= ALU_OP_CMPEQ;
+        when OP_CMPEQI  =>
+          srcreg_class <= SRC_REG_CLASS_A;
+          imm16_class  <= IMM16_CLASS_s16;
+          dstreg_class <= DEST_REG_CLASS_B;
+          fu_op        <= ALU_OP_CMPEQ;
 
-      when OP_LDBUIO  =>
-        instr_class  <= INSTR_CLASS_MEMORY;
-        srcreg_class <= SRC_REG_CLASS_A;
-        imm16_class  <= IMM16_CLASS_s16;
-        dstreg_class <= DEST_REG_CLASS_B;
-        fu_op        <= MEM_OP_LDBU;
+        when OP_LDBUIO  =>
+          instr_class  <= INSTR_CLASS_MEMORY;
+          srcreg_class <= SRC_REG_CLASS_A;
+          imm16_class  <= IMM16_CLASS_s16;
+          dstreg_class <= DEST_REG_CLASS_B;
+          fu_op        <= MEM_OP_LDBU;
 
-      when OP_MULI    =>
-        null; -- MUL not implemented
+        when OP_MULI    =>
+          null; -- MUL not implemented
 
-      when OP_STBIO   =>
-        instr_class  <= INSTR_CLASS_MEMORY;
-        srcreg_class <= SRC_REG_CLASS_A;
-        imm16_class  <= IMM16_CLASS_s16;
-        fu_op        <= MEM_OP_STB;
+        when OP_STBIO   =>
+          instr_class  <= INSTR_CLASS_MEMORY;
+          srcreg_class <= SRC_REG_CLASS_A;
+          imm16_class  <= IMM16_CLASS_s16;
+          fu_op        <= MEM_OP_STB;
 
-      when OP_BEQ     =>
-        instr_class  <= INSTR_CLASS_BRANCH;
-        srcreg_class <= SRC_REG_CLASS_AB;
-        imm16_class  <= IMM16_CLASS_s16;
-        fu_op        <= ALU_OP_CMPEQ;
+        when OP_BEQ     =>
+          instr_class  <= INSTR_CLASS_BRANCH;
+          srcreg_class <= SRC_REG_CLASS_AB;
+          imm16_class  <= IMM16_CLASS_s16;
+          fu_op        <= ALU_OP_CMPEQ;
 
-      when OP_LDBIO   =>
-        instr_class  <= INSTR_CLASS_MEMORY;
-        srcreg_class <= SRC_REG_CLASS_A;
-        imm16_class  <= IMM16_CLASS_s16;
-        dstreg_class <= DEST_REG_CLASS_B;
-        fu_op        <= MEM_OP_LDB;
+        when OP_LDBIO   =>
+          instr_class  <= INSTR_CLASS_MEMORY;
+          srcreg_class <= SRC_REG_CLASS_A;
+          imm16_class  <= IMM16_CLASS_s16;
+          dstreg_class <= DEST_REG_CLASS_B;
+          fu_op        <= MEM_OP_LDB;
 
-      when OP_CMPGEUI =>
-        srcreg_class <= SRC_REG_CLASS_A;
-        dstreg_class <= DEST_REG_CLASS_B;
-        fu_op        <= ALU_OP_CMPGEU;
+        when OP_CMPGEUI =>
+          srcreg_class <= SRC_REG_CLASS_A;
+          dstreg_class <= DEST_REG_CLASS_B;
+          fu_op        <= ALU_OP_CMPGEU;
 
-      when OP_LDHUIO  =>
-        instr_class  <= INSTR_CLASS_MEMORY;
-        srcreg_class <= SRC_REG_CLASS_A;
-        imm16_class  <= IMM16_CLASS_s16;
-        dstreg_class <= DEST_REG_CLASS_B;
-        fu_op        <= MEM_OP_LDHU;
+        when OP_LDHUIO  =>
+          instr_class  <= INSTR_CLASS_MEMORY;
+          srcreg_class <= SRC_REG_CLASS_A;
+          imm16_class  <= IMM16_CLASS_s16;
+          dstreg_class <= DEST_REG_CLASS_B;
+          fu_op        <= MEM_OP_LDHU;
 
-      when OP_ANDHI   =>
-        srcreg_class <= SRC_REG_CLASS_A;
-        imm16_class  <= IMM16_CLASS_h16;
-        dstreg_class <= DEST_REG_CLASS_B;
-        fu_op        <= ALU_OP_AND;
+        when OP_ANDHI   =>
+          srcreg_class <= SRC_REG_CLASS_A;
+          imm16_class  <= IMM16_CLASS_h16;
+          dstreg_class <= DEST_REG_CLASS_B;
+          fu_op        <= ALU_OP_AND;
 
-      when OP_STHIO   =>
-        instr_class  <= INSTR_CLASS_MEMORY;
-        srcreg_class <= SRC_REG_CLASS_A;
-        imm16_class  <= IMM16_CLASS_s16;
-        fu_op        <= MEM_OP_STH;
+        when OP_STHIO   =>
+          instr_class  <= INSTR_CLASS_MEMORY;
+          srcreg_class <= SRC_REG_CLASS_A;
+          imm16_class  <= IMM16_CLASS_s16;
+          fu_op        <= MEM_OP_STH;
 
-      when OP_BGEU    =>
-        instr_class  <= INSTR_CLASS_BRANCH;
-        srcreg_class <= SRC_REG_CLASS_AB;
-        imm16_class  <= IMM16_CLASS_s16;
-        fu_op        <= ALU_OP_CMPGEU;
+        when OP_BGEU    =>
+          instr_class  <= INSTR_CLASS_BRANCH;
+          srcreg_class <= SRC_REG_CLASS_AB;
+          imm16_class  <= IMM16_CLASS_s16;
+          fu_op        <= ALU_OP_CMPGEU;
 
-      when OP_LDHIO   =>
-        instr_class  <= INSTR_CLASS_MEMORY;
-        srcreg_class <= SRC_REG_CLASS_A;
-        imm16_class  <= IMM16_CLASS_s16;
-        dstreg_class <= DEST_REG_CLASS_B;
-        fu_op        <= MEM_OP_LDH;
+        when OP_LDHIO   =>
+          instr_class  <= INSTR_CLASS_MEMORY;
+          srcreg_class <= SRC_REG_CLASS_A;
+          imm16_class  <= IMM16_CLASS_s16;
+          dstreg_class <= DEST_REG_CLASS_B;
+          fu_op        <= MEM_OP_LDH;
 
-      when OP_CMPLTUI =>
-        srcreg_class <= SRC_REG_CLASS_A;
-        dstreg_class <= DEST_REG_CLASS_B;
-        fu_op        <= ALU_OP_CMPLTU;
+        when OP_CMPLTUI =>
+          srcreg_class <= SRC_REG_CLASS_A;
+          dstreg_class <= DEST_REG_CLASS_B;
+          fu_op        <= ALU_OP_CMPLTU;
 
-      when OP_CUSTOM  =>
-        null; -- custom instructions not implemented
+        when OP_CUSTOM  =>
+          null; -- custom instructions not implemented
 
-      when OP_INITD   =>
-        null;
+        when OP_INITD   =>
+          null;
 
-      when OP_ORHI    =>
-        srcreg_class <= SRC_REG_CLASS_A;
-        imm16_class  <= IMM16_CLASS_h16;
-        dstreg_class <= DEST_REG_CLASS_B;
-        fu_op        <= ALU_OP_OR;
+        when OP_ORHI    =>
+          srcreg_class <= SRC_REG_CLASS_A;
+          imm16_class  <= IMM16_CLASS_h16;
+          dstreg_class <= DEST_REG_CLASS_B;
+          fu_op        <= ALU_OP_OR;
 
-      when OP_STWIO   =>
-        instr_class  <= INSTR_CLASS_MEMORY;
-        srcreg_class <= SRC_REG_CLASS_A;
-        imm16_class  <= IMM16_CLASS_s16;
-        fu_op        <= MEM_OP_STW;
+        when OP_STWIO   =>
+          instr_class  <= INSTR_CLASS_MEMORY;
+          srcreg_class <= SRC_REG_CLASS_A;
+          imm16_class  <= IMM16_CLASS_s16;
+          fu_op        <= MEM_OP_STW;
 
-      when OP_BLTU    =>
-        instr_class  <= INSTR_CLASS_BRANCH;
-        srcreg_class <= SRC_REG_CLASS_AB;
-        imm16_class  <= IMM16_CLASS_s16;
-        fu_op        <= ALU_OP_CMPLTU;
+        when OP_BLTU    =>
+          instr_class  <= INSTR_CLASS_BRANCH;
+          srcreg_class <= SRC_REG_CLASS_AB;
+          imm16_class  <= IMM16_CLASS_s16;
+          fu_op        <= ALU_OP_CMPLTU;
 
-      when OP_LDWIO   =>
-        instr_class  <= INSTR_CLASS_MEMORY;
-        srcreg_class <= SRC_REG_CLASS_A;
-        imm16_class  <= IMM16_CLASS_s16;
-        dstreg_class <= DEST_REG_CLASS_B;
-        fu_op        <= MEM_OP_LDW;
+        when OP_LDWIO   =>
+          instr_class  <= INSTR_CLASS_MEMORY;
+          srcreg_class <= SRC_REG_CLASS_A;
+          imm16_class  <= IMM16_CLASS_s16;
+          dstreg_class <= DEST_REG_CLASS_B;
+          fu_op        <= MEM_OP_LDW;
 
-      when OP_RDPRS   => -- implement as ADDI, TODO
-        srcreg_class <= SRC_REG_CLASS_A;
-        imm16_class  <= IMM16_CLASS_s16;
-        dstreg_class <= DEST_REG_CLASS_B;
-        fu_op        <= ALU_OP_ADD;
+        when OP_RDPRS   => -- implement as ADDI, TODO
+          srcreg_class <= SRC_REG_CLASS_A;
+          imm16_class  <= IMM16_CLASS_s16;
+          dstreg_class <= DEST_REG_CLASS_B;
+          fu_op        <= ALU_OP_ADD;
 
-      when OP_RTYPE   =>
-        null;
+        when OP_RTYPE   =>
+          null;
 
-      when OP_FLUSHD  =>
-        null;
+        when OP_FLUSHD  =>
+          null;
 
-      when OP_XORHI   =>
-        srcreg_class <= SRC_REG_CLASS_A;
-        imm16_class  <= IMM16_CLASS_h16;
-        dstreg_class <= DEST_REG_CLASS_B;
-        fu_op        <= ALU_OP_XOR;
+        when OP_XORHI   =>
+          srcreg_class <= SRC_REG_CLASS_A;
+          imm16_class  <= IMM16_CLASS_h16;
+          dstreg_class <= DEST_REG_CLASS_B;
+          fu_op        <= ALU_OP_XOR;
 
-      when others =>
-        null;
-    end case;
-
-    if op=OP_RTYPE then
-      case to_integer(opx) is
+        when others =>
+          null;
+      end case;
+      
+    else -- R-TYPE
+    
+      case to_integer(op_reg) is
         when OPX_ERET   =>
           null; -- TODO
 

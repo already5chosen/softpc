@@ -141,7 +141,11 @@ begin
   -- instruction decoder, results available in PH_Regfile1 stage
   d:entity work.n2decode
    port map (
-    instruction  => instr_s2,     -- in  unsigned(31 downto 0);
+    clk          => clk,          -- in  std_logic;
+    start        => PH_Decode,    -- in  boolean;
+    instruction  => instr_s1,     -- in  unsigned(31 downto 0);
+    -- decode results are available on the next clock after start
+    r_type       => open,         -- buffer boolean;
     instr_class  => instr_class , -- out instr_class_t;
     srcreg_class => srcreg_class, -- out src_reg_class_t;
     dstreg_class => dstreg_class, -- out dest_reg_class_t;
