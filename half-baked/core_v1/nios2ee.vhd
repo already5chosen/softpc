@@ -91,9 +91,9 @@ architecture a of nios2ee is
   alias instr_c     : unsigned(4  downto 0) is instr_s2(21 downto 17); -- R-type
   alias instr_imm26 : unsigned(25 downto 0) is instr_s2(31 downto  6); -- J-type
 
+  signal r_type, writeback_ex, is_call, is_next_pc : boolean;
   signal instr_class  : instr_class_t;
   signal srcreg_class : src_reg_class_t;
-  signal dstreg_class : dest_reg_class_t;
   signal imm16_class  : imm16_class_t;
   signal fu_op_i, fu_op_reg_i : natural range 0 to 15; -- ALU, shift or memory(LSU) unit internal opcode
   signal fu_op_u, fu_op_reg_u : unsigned(3 downto 0);  -- unsigned representation of fu_op_i
@@ -118,11 +118,7 @@ architecture a of nios2ee is
   attribute ramstyle of rf : signal is "no_rw_check";
   signal rf_readdata : u32;
   signal rf_wraddr : natural range 0 to 31;
-  signal rf_wren : boolean;
-
-  -- register writeback data selector
-  type rf_wrsel_t is (RF_WR_ALU, RF_WR_NEXTPC, RF_WR_SHIFTER);
-  signal rf_wrsel : rf_wrsel_t;
+  signal dstreg_wren, result_sel_alu : boolean;
 
   alias rf_readdata_h : unsigned(15 downto 0) is rf_readdata(15 downto 0);
   alias rf_readdata_b : unsigned(7 downto 0)  is rf_readdata(7 downto 0);
@@ -145,10 +141,12 @@ begin
     start        => PH_Decode,    -- in  boolean;
     instruction  => instr_s1,     -- in  unsigned(31 downto 0);
     -- decode results are available on the next clock after start
-    r_type       => open,         -- buffer boolean;
+    r_type       => r_type,       -- buffer boolean;
     instr_class  => instr_class , -- out instr_class_t;
     srcreg_class => srcreg_class, -- out src_reg_class_t;
-    dstreg_class => dstreg_class, -- out dest_reg_class_t;
+    writeback_ex => writeback_ex, -- out boolean; -- true when destination register is updated with result of PH_execute stage
+    is_call      => is_call,      -- out boolean;
+    is_next_pc   => is_next_pc,   -- out boolean;
     imm16_class  => imm16_class,  -- out imm16_class_t;
     fu_op        => fu_op_i       -- out natural range 0 to 15  -- ALU, shift or memory(LSU) unit internal opcode
    );
@@ -264,12 +262,12 @@ begin
       pc_msbits      <= (others => '0');
       dm_write       <= '0';
       dm_read        <= '0';
-      rf_wren        <= false;
+      dstreg_wren    <= false;
       is_tcm_reg     <= false;
     elsif rising_edge(clk) then
       dm_write <= '0';
       dm_read  <= '0';
-      rf_wren  <= false;
+      dstreg_wren <= false;
 
       PH_Fetch          <= false;
       PH_Decode         <= false;
@@ -293,7 +291,6 @@ begin
         else
           PH_Execute  <= true;
         end if;
-        rf_wren <= dstreg_class=DEST_REG_CLASS_CALL;
       end if;
 
       if PH_Regfile2 then
@@ -301,6 +298,7 @@ begin
       end if;
 
       if PH_Execute then
+        dstreg_wren <= writeback_ex;
         if instr_class=INSTR_CLASS_BRANCH then
           PH_Branch <= true;
         elsif instr_class=INSTR_CLASS_MEMORY then
@@ -318,8 +316,6 @@ begin
             else
               pc <= pc_msbits & instr_imm26; -- direct jumps and calls
             end if;
-          else
-            rf_wren  <= true;
           end if;
         end if;
       end if;
@@ -351,7 +347,7 @@ begin
 
       if PH_Memory_Data then
         if is_tcm_reg or avm_readdatavalid='1' then
-          rf_wren <= true;
+          dstreg_wren <= true;
           PH_Fetch <= true;
         else
           PH_Memory_Data <= true;
@@ -364,7 +360,8 @@ begin
   -- register file access
   process (clk)
     variable rf_rdaddr : natural range 0 to 31;
-    variable rf_d      : u32;
+    variable rf_d    : u32;
+    variable rf_wren : boolean;
   begin
     if rising_edge(clk) then
 
@@ -374,13 +371,16 @@ begin
       if PH_Decode then
         rf_rdaddr := to_integer(instr_a);
         instr_s2 <= instr_s1;
+        rf_wraddr  <= 31; -- prepare for call
       end if;
 
       if PH_Regfile1 then
         reg_a <= rf_readdata; -- latch register A
         reg_b <= immx;        -- type-I instructions except branches or shifts by immediate - the second source operand is immediate
-        if srcreg_class=SRC_REG_CLASS_AB then
-          reg_b <= (others => '0');
+        if r_type then
+          rf_wraddr <= to_integer(instr_c); -- r[C]
+        else
+          rf_wraddr <= to_integer(instr_b); -- r[B]
         end if;
       end if;
 
@@ -393,29 +393,22 @@ begin
       end if;
 
       -- register file write
-      case dstreg_class is
-        when DEST_REG_CLASS_CALL => rf_wraddr <= 31;                  -- ra==r31
-        when DEST_REG_CLASS_B    => rf_wraddr <= to_integer(instr_b); -- r[B]
-        when DEST_REG_CLASS_C    => rf_wraddr <= to_integer(instr_c); -- r[C]
-        when others              => rf_wraddr <= 0;                   -- no destination register
-      end case;
-      case instr_class is
-        when INSTR_CLASS_JUMP   => rf_wrsel <= RF_WR_NEXTPC;
-        when INSTR_CLASS_SHIFT  => rf_wrsel <= RF_WR_SHIFTER;
-        when INSTR_CLASS_MEMORY => rf_wrsel <= RF_WR_SHIFTER;
-        when others             => rf_wrsel <= RF_WR_ALU;
-      end case;
-      case rf_wrsel is
-        when RF_WR_NEXTPC =>
-          rf_d(31 downto 2) := pc;
-          rf_d(1 downto 0)  := (others => '0');
-        when RF_WR_SHIFTER =>
-          rf_d := sh_result;
-        when others =>
-          rf_d := alu_result;
-      end case;
+      rf_wren := dstreg_wren and (rf_wraddr/=0);
+      result_sel_alu <= instr_class=INSTR_CLASS_ALU;
+      -- if instr_class=INSTR_CLASS_ALU then
+      if result_sel_alu then
+        rf_d := alu_result;
+      else
+        rf_d := sh_result;
+      end if;
 
-      if rf_wren and rf_wraddr/=0 then
+      if is_call or is_next_pc then
+        rf_wren := true;
+        rf_d(31 downto 2) := pc;
+        rf_d(1 downto 0)  := (others => '0');
+      end if;
+
+      if rf_wren then
         rf(rf_wraddr) <= rf_d;
       end if;
 
