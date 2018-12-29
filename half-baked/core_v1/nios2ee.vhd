@@ -262,7 +262,7 @@ begin
     fetch         => PH_Fetch,                              -- in  boolean;
     execute       => PH_Execute,                            -- in  boolean;
     indirect_jump => instr_class=INSTR_CLASS_INDIRECT_JUMP, -- in  boolean;
-    direct_jump   => instr_class=INSTR_CLASS_DIRECT_JUMP,   -- in  boolean;
+    direct_jump   => PH_Regfile1 and instr_class=INSTR_CLASS_DIRECT_JUMP,   -- in  boolean;
     branch        => PH_Branch,                             -- in  boolean;
     branch_taken  => cmp_result,                            -- in  boolean;
     imm26         => instr_imm26,                           -- in  unsigned(25 downto 0);
@@ -294,7 +294,9 @@ begin
         PH_Regfile1 <= PH_Decode;
 
         if PH_Regfile1 then
-          if srcreg_class=SRC_REG_CLASS_AB and instr_b/=0 then
+          if instr_class=INSTR_CLASS_DIRECT_JUMP then
+            PH_Fetch <= true; -- last execution stage of direct branch
+          elsif srcreg_class=SRC_REG_CLASS_AB and instr_b/=0 then
             PH_Regfile2 <= true;
           else
             PH_Execute  <= true;

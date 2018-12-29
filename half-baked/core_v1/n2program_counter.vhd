@@ -34,9 +34,6 @@ begin
       if execute then
         addr <= nextpc;
         nextpc <= nextpc + immx(nextpc'high downto 2); -- calculate address of taken branch
-        if direct_jump then
-          addr(27 downto 2) <= imm26;  -- direct jumps and calls
-        end if;
         if indirect_jump then
           addr <= reg_a(addr'high downto 2); -- indirect jumps, calls and returns
         end if;
@@ -44,6 +41,10 @@ begin
 
       if branch and branch_taken then
         addr <= nextpc; -- branch taken
+      end if;
+
+      if direct_jump then
+        addr(27 downto 2) <= imm26;  -- direct jumps and calls
       end if;
 
       if s_reset then
