@@ -5,18 +5,18 @@ use ieee.numeric_std.all;
 entity n2program_counter is
  generic ( RESET_ADDR : natural );
  port (
-  clk         : in  std_logic;
-  s_reset     : in  boolean; -- synchronous reset
-  fetch       : in  boolean;
-  execute     : in  boolean;
-  jump        : in  boolean;
-  direct_jump : in  boolean;
-  branch      : in  boolean;
-  branch_taken: in  boolean;
-  imm26       : in  unsigned(25 downto 0);
-  reg_a       : in  unsigned(31 downto 0);
-  addr        : out unsigned(31 downto 2);
-  nextpc      : out unsigned(31 downto 2)
+  clk           : in  std_logic;
+  s_reset       : in  boolean; -- synchronous reset
+  fetch         : in  boolean;
+  execute       : in  boolean;
+  indirect_jump : in  boolean;
+  direct_jump   : in  boolean;
+  branch        : in  boolean;
+  branch_taken  : in  boolean;
+  imm26         : in  unsigned(25 downto 0);
+  reg_a         : in  unsigned(31 downto 0);
+  addr          : out unsigned(31 downto 2);
+  nextpc        : out unsigned(31 downto 2)
  );
 end entity n2program_counter;
 
@@ -34,12 +34,11 @@ begin
       if execute then
         addr <= nextpc;
         nextpc <= nextpc + immx(nextpc'high downto 2); -- calculate address of taken branch
-        if jump then
-          if direct_jump then
-            addr(27 downto 2) <= imm26;  -- direct jumps and calls
-          else
-            addr <= reg_a(addr'high downto 2); -- indirect jumps, calls and returns
-          end if;
+        if direct_jump then
+          addr(27 downto 2) <= imm26;  -- direct jumps and calls
+        end if;
+        if indirect_jump then
+          addr <= reg_a(addr'high downto 2); -- indirect jumps, calls and returns
         end if;
       end if;
 

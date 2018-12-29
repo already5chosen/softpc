@@ -75,10 +75,10 @@ begin
     if not r_type then
       case to_integer(op_reg) is
         when OP_CALL =>
-          instr_class  <= INSTR_CLASS_JUMP;
+          instr_class  <= INSTR_CLASS_DIRECT_JUMP;
 
         when OP_JMPI =>
-          instr_class  <= INSTR_CLASS_JUMP;
+          instr_class  <= INSTR_CLASS_DIRECT_JUMP;
 
         when OP_LDBU  =>
           instr_class  <= INSTR_CLASS_MEMORY;
@@ -343,9 +343,8 @@ begin
           null;
 
         when OPX_RET    =>
-          instr_class  <= INSTR_CLASS_JUMP;
+          instr_class  <= INSTR_CLASS_INDIRECT_JUMP;
           srcreg_class <= SRC_REG_CLASS_A;
-          fu_op        <= ALU_OP_TRUE;
 
         when OPX_NOR    =>
           srcreg_class <= SRC_REG_CLASS_AB;
@@ -373,9 +372,8 @@ begin
           null;
 
         when OPX_JMP    =>
-          instr_class  <= INSTR_CLASS_JUMP;
+          instr_class  <= INSTR_CLASS_INDIRECT_JUMP;
           srcreg_class <= SRC_REG_CLASS_A;
-          fu_op        <= ALU_OP_TRUE;
 
         when OPX_AND    =>
           srcreg_class <= SRC_REG_CLASS_AB;
@@ -431,7 +429,7 @@ begin
           null;
 
         when OPX_CALLR  =>
-          instr_class  <= INSTR_CLASS_JUMP;
+          instr_class  <= INSTR_CLASS_INDIRECT_JUMP;
           srcreg_class <= SRC_REG_CLASS_A;
 
         when OPX_XOR    =>

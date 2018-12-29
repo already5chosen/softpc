@@ -5,7 +5,8 @@ package n2decode_definitions is
     INSTR_CLASS_ALU   , -- arithmetic/logic/comparison
     INSTR_CLASS_SHIFT , -- shift/rotate
     INSTR_CLASS_BRANCH, -- PC-relative branches
-    INSTR_CLASS_JUMP  , -- absolute and indirect jumps, calls, returns
+    INSTR_CLASS_DIRECT_JUMP,   -- direct jump and call
+    INSTR_CLASS_INDIRECT_JUMP, -- indirect jumps, calls, returns
     INSTR_CLASS_MEMORY  -- load/store
   );
 

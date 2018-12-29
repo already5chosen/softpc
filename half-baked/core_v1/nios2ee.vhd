@@ -257,18 +257,18 @@ begin
   iu:entity work.n2program_counter
    generic map (RESET_ADDR => RESET_ADDR)
    port map (
-    clk          => clk,                                           -- in  std_logic;
-    s_reset      => s_reset,                                       -- in  boolean; -- synchronous reset
-    fetch        => PH_Fetch,                                      -- in  boolean;
-    execute      => PH_Execute,                                    -- in  boolean;
-    jump         => instr_class=INSTR_CLASS_JUMP,                  -- in  boolean;
-    direct_jump  => srcreg_class/=SRC_REG_CLASS_A,                 -- in  boolean;
-    branch       => PH_Branch,                                     -- in  boolean;
-    branch_taken => cmp_result,                                    -- in  boolean;
-    imm26        => instr_imm26,                                   -- in  unsigned(25 downto 0);
-    reg_a        => reg_a,                                         -- in  unsigned(31 downto 0);
-    addr         => pc,                                            -- out unsigned(31 downto 2)
-    nextpc       => nextpc                                         -- out unsigned(31 downto 2)
+    clk           => clk,                                   -- in  std_logic;
+    s_reset       => s_reset,                               -- in  boolean; -- synchronous reset
+    fetch         => PH_Fetch,                              -- in  boolean;
+    execute       => PH_Execute,                            -- in  boolean;
+    indirect_jump => instr_class=INSTR_CLASS_INDIRECT_JUMP, -- in  boolean;
+    direct_jump   => instr_class=INSTR_CLASS_DIRECT_JUMP,   -- in  boolean;
+    branch        => PH_Branch,                             -- in  boolean;
+    branch_taken  => cmp_result,                            -- in  boolean;
+    imm26         => instr_imm26,                           -- in  unsigned(25 downto 0);
+    reg_a         => reg_a,                                 -- in  unsigned(31 downto 0);
+    addr          => pc,                                    -- out unsigned(31 downto 2)
+    nextpc        => nextpc                                 -- out unsigned(31 downto 2)
    );
 
   process (clk)
