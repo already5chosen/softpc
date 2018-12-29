@@ -15,7 +15,8 @@ entity n2program_counter is
   imm26       : in  unsigned(25 downto 0);
   reg_a       : in  unsigned(31 downto 0);
   immx        : in  unsigned(31 downto 0);
-  addr        : out unsigned(31 downto 2)
+  addr        : out unsigned(31 downto 2);
+  nextpc      : out unsigned(31 downto 2)
  );
 end entity n2program_counter;
 
@@ -23,7 +24,8 @@ architecture a of n2program_counter is
   signal pc : unsigned(addr'range);
   signal pc_msbits : unsigned(31 downto 28);
 begin
-  addr <= pc;
+  addr   <= pc;
+  nextpc <= pc;
   process (clk)
   begin
     if rising_edge(clk) then

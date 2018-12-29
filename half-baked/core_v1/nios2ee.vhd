@@ -77,7 +77,7 @@ architecture a of nios2ee is
   -- For Avalon-mm accesses remain at this phase until fabric asserts avm_readdatavalid signal
 
   subtype u32 is unsigned(31 downto 0);
-  signal pc    : unsigned(31 downto 2);
+  signal pc, nextpc : unsigned(31 downto 2);
 
   alias instr_s1 : u32 is tcm_readdata;
   -- instruction decode signals
@@ -267,7 +267,8 @@ begin
     imm26        => instr_imm26,                                   -- in  unsigned(25 downto 0);
     reg_a        => reg_a,                                         -- in  unsigned(31 downto 0);
     immx         => reg_b,                                         -- in  unsigned(31 downto 0);
-    addr         => pc                                             -- out unsigned(31 downto 2)
+    addr         => pc,                                            -- out unsigned(31 downto 2)
+    nextpc       => nextpc                                         -- out unsigned(31 downto 2)
    );
 
   process (clk)
@@ -398,7 +399,7 @@ begin
     clk         => clk,            -- in  std_logic;
     rdaddr      => rf_rdaddr,      -- in  natural range 0 to 31;
     wraddr      => rf_wraddr,      -- in  natural range 0 to 31;
-    nextpc      => pc,             -- in  unsigned(31 downto 2);
+    nextpc      => nextpc,         -- in  unsigned(31 downto 2);
     wrnextpc    => rf_wrnextpc,    -- in  boolean;
     wrdata0     => alu_result,     -- in  unsigned(31 downto 0);
     wrdata1     => sh_result,      -- in  unsigned(31 downto 0);
