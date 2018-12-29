@@ -38,8 +38,9 @@ use work.shifter_opcodes.all;
 use work.memory_opcodes.all;
 
 architecture a of nios2ee is
+  signal s_reset : boolean := true;
   -- processing phases
-  signal PH_Fetch : boolean := true;
+  signal PH_Fetch : boolean;
   -- Drive instruction address on tcm_rdaddress.
   -- Write result of the previous instruction into register file.
   -- Increment PC
@@ -133,6 +134,15 @@ architecture a of nios2ee is
   signal readdata_bi : natural range 0 to 3; -- byte index of LS byte of load result in dm_readdata
 
 begin
+
+  process (clk, reset)
+  begin
+    if reset='1' then
+      s_reset <= true;
+    elsif rising_edge(clk) then
+      s_reset <= false;
+    end if;
+  end process;
 
   -- instruction decoder, results available in PH_Regfile1 stage
   d:entity work.n2decode
@@ -249,22 +259,7 @@ begin
 
   process (clk, reset)
   begin
-    if reset='1' then
-      PH_Fetch          <= true;
-      PH_Decode         <= false;
-      PH_Regfile1       <= false;
-      PH_Regfile2       <= false;
-      PH_Execute        <= false;
-      PH_Branch         <= false;
-      PH_Memory_Address <= false;
-      PH_Memory_Data    <= false;
-      pc             <= to_unsigned(RESET_ADDR/4, 30);
-      pc_msbits      <= (others => '0');
-      dm_write       <= '0';
-      dm_read        <= '0';
-      dstreg_wren    <= false;
-      is_tcm_reg     <= false;
-    elsif rising_edge(clk) then
+    if rising_edge(clk) then
       dm_write <= '0';
       dm_read  <= '0';
       dstreg_wren <= false;
@@ -278,79 +273,84 @@ begin
       PH_Memory_Address <= false;
       PH_Memory_Data    <= false;
 
-      if PH_Fetch then
-        pc        <= pc + 1;
-        pc_msbits <= pc(31 downto 28);
-      end if;
-      PH_Decode   <= PH_Fetch;
-      PH_Regfile1 <= PH_Decode;
-
-      if PH_Regfile1 then
-        if srcreg_class=SRC_REG_CLASS_AB and instr_b/=0 then
-          PH_Regfile2 <= true;
-        else
-          PH_Execute  <= true;
+      if s_reset then
+        PH_Fetch <= true;
+        pc       <= to_unsigned(RESET_ADDR/4, 30);
+      else
+        if PH_Fetch then
+          pc        <= pc + 1;
+          pc_msbits <= pc(31 downto 28);
         end if;
-      end if;
+        PH_Decode   <= PH_Fetch;
+        PH_Regfile1 <= PH_Decode;
 
-      if PH_Regfile2 then
-        PH_Execute <= true;
-      end if;
-
-      if PH_Execute then
-        dstreg_wren <= writeback_ex;
-        if instr_class=INSTR_CLASS_BRANCH then
-          PH_Branch <= true;
-        elsif instr_class=INSTR_CLASS_MEMORY then
-          PH_Memory_Address <= true;
-          if fu_op_reg_u(MEM_OP_BIT_STORE)='1' then
-            dm_write <= '1';
+        if PH_Regfile1 then
+          if srcreg_class=SRC_REG_CLASS_AB and instr_b/=0 then
+            PH_Regfile2 <= true;
           else
-            dm_read  <= '1';
+            PH_Execute  <= true;
           end if;
-        else
-          PH_Fetch <= true;
-          if instr_class=INSTR_CLASS_JUMP then
-            if srcreg_class=SRC_REG_CLASS_A then
-              pc <= reg_a(31 downto 2);      -- indirect jumps, calls and returns
+        end if;
+
+        if PH_Regfile2 then
+          PH_Execute <= true;
+        end if;
+
+        if PH_Execute then
+          dstreg_wren <= writeback_ex;
+          if instr_class=INSTR_CLASS_BRANCH then
+            PH_Branch <= true;
+          elsif instr_class=INSTR_CLASS_MEMORY then
+            PH_Memory_Address <= true;
+            if fu_op_reg_u(MEM_OP_BIT_STORE)='1' then
+              dm_write <= '1';
             else
-              pc <= pc_msbits & instr_imm26; -- direct jumps and calls
+              dm_read  <= '1';
+            end if;
+          else
+            PH_Fetch <= true;
+            if instr_class=INSTR_CLASS_JUMP then
+              if srcreg_class=SRC_REG_CLASS_A then
+                pc <= reg_a(31 downto 2);      -- indirect jumps, calls and returns
+              else
+                pc <= pc_msbits & instr_imm26; -- direct jumps and calls
+              end if;
             end if;
           end if;
         end if;
-      end if;
 
-      if PH_Branch then
-        if cmp_result then
-          pc <= pc + reg_b(31 downto 2); -- branch taken
+        if PH_Branch then
+          if cmp_result then
+            pc <= pc + reg_b(31 downto 2); -- branch taken
+          end if;
+          PH_Fetch <= true;
         end if;
-        PH_Fetch <= true;
-      end if;
 
-      if PH_Memory_Address then
-        dm_write   <= dm_write;
-        dm_read    <= dm_read;
-        is_tcm_reg <= is_tcm;
-        PH_Memory_Address <= true;
-        if is_tcm or avm_waitrequest='0' then
-          dm_write <= '0';
-          dm_read  <= '0';
-          PH_Memory_Address <= false;
-          if dm_read='0' then
-            PH_Fetch <= true;
-          else
-            -- TODO - case of avm read with latency=0
-            PH_Memory_Data <= true;
+        if PH_Memory_Address then
+          dm_write   <= dm_write;
+          dm_read    <= dm_read;
+          is_tcm_reg <= is_tcm;
+          PH_Memory_Address <= true;
+          if is_tcm or avm_waitrequest='0' then
+            dm_write <= '0';
+            dm_read  <= '0';
+            PH_Memory_Address <= false;
+            if dm_read='0' then
+              PH_Fetch <= true;
+            else
+              -- TODO - case of avm read with latency=0
+              PH_Memory_Data <= true;
+            end if;
           end if;
         end if;
-      end if;
 
-      if PH_Memory_Data then
-        if is_tcm_reg or avm_readdatavalid='1' then
-          dstreg_wren <= true;
-          PH_Fetch <= true;
-        else
-          PH_Memory_Data <= true;
+        if PH_Memory_Data then
+          if is_tcm_reg or avm_readdatavalid='1' then
+            dstreg_wren <= true;
+            PH_Fetch <= true;
+          else
+            PH_Memory_Data <= true;
+          end if;
         end if;
       end if;
 
