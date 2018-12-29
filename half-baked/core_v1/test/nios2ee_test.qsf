@@ -72,6 +72,7 @@ set_global_assignment -name VHDL_FILE ../n2decode.vhd
 set_global_assignment -name VHDL_FILE ../n2alu.vhd
 set_global_assignment -name VHDL_FILE ../n2byte_shifter.vhd
 set_global_assignment -name VHDL_FILE ../n2bit_shifter.vhd
+set_global_assignment -name VHDL_FILE ../n2register_file.vhd
 set_global_assignment -name VHDL_FILE ../../n2decode/shifter_opcodes.vhd
 set_global_assignment -name VHDL_FILE ../../n2decode/n2opcodes.vhd
 set_global_assignment -name VHDL_FILE ../../n2decode/memory_opcodes.vhd

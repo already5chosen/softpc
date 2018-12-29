@@ -77,7 +77,7 @@ architecture a of nios2ee is
   -- For Avalon-mm accesses remain at this phase until fabric asserts avm_readdatavalid signal
 
   subtype u32 is unsigned(31 downto 0);
-  signal pc    : unsigned(31 downto 2) := to_unsigned(RESET_ADDR/4, 30);
+  signal pc    : unsigned(31 downto 2);
   signal pc_msbits : unsigned(31 downto 28);
 
   alias instr_s1 : u32 is tcm_readdata;
@@ -112,13 +112,10 @@ architecture a of nios2ee is
   signal bysh_op_align, byte_rshift, bysh_rshift : unsigned(1 downto 0);
   signal bish_result, bysh_a, sh_result : u32;
 
-  -- register file
-  type rf_t is array (natural range <>) of u32;
-  signal rf : rf_t(0 to 31);
-  attribute ramstyle : string;
-  attribute ramstyle of rf : signal is "no_rw_check";
+  -- register file access
+  signal rf_wrnextpc : boolean;
   signal rf_readdata : u32;
-  signal rf_wraddr : natural range 0 to 31;
+  signal rf_wraddr, rf_rdaddr : natural range 0 to 31;
   signal dstreg_wren, result_sel_alu : boolean;
 
   alias rf_readdata_h : unsigned(15 downto 0) is rf_readdata(15 downto 0);
@@ -359,19 +356,14 @@ begin
 
   -- register file access
   process (clk)
-    variable rf_rdaddr : natural range 0 to 31;
-    variable rf_d    : u32;
-    variable rf_wren : boolean;
   begin
     if rising_edge(clk) then
 
       fu_op_reg_i <= fu_op_i;
       -- register file read address
-      rf_rdaddr := to_integer(instr_b);
       if PH_Decode then
-        rf_rdaddr := to_integer(instr_a);
-        instr_s2 <= instr_s1;
-        rf_wraddr  <= 31; -- prepare for call
+        instr_s2  <= instr_s1;
+        rf_wraddr <= 31; -- prepare for call
       end if;
 
       if PH_Regfile1 then
@@ -393,29 +385,28 @@ begin
       end if;
 
       -- register file write
-      rf_wren := dstreg_wren and (rf_wraddr/=0);
       result_sel_alu <= instr_class=INSTR_CLASS_ALU;
-      -- if instr_class=INSTR_CLASS_ALU then
-      if result_sel_alu then
-        rf_d := alu_result;
-      else
-        rf_d := sh_result;
-      end if;
 
-      if is_call or is_next_pc then
-        rf_wren := true;
-        rf_d(31 downto 2) := pc;
-        rf_d(1 downto 0)  := (others => '0');
-      end if;
-
-      if rf_wren then
-        rf(rf_wraddr) <= rf_d;
-      end if;
-
-      -- register file read
-      rf_readdata <= rf(rf_rdaddr);
     end if;
   end process;
+
+  rf_rdaddr <= to_integer(instr_a) when PH_Decode else to_integer(instr_b);
+  rf_wrnextpc <= is_call or is_next_pc;
+  rf:entity work.n2register_file
+   port map (
+    clk         => clk,            -- in  std_logic;
+    rdaddr      => rf_rdaddr,      -- in  natural range 0 to 31;
+    wraddr      => rf_wraddr,      -- in  natural range 0 to 31;
+    nextpc      => pc,             -- in  unsigned(31 downto 2);
+    wrnextpc    => rf_wrnextpc,    -- in  boolean;
+    wrdata0     => alu_result,     -- in  unsigned(31 downto 0);
+    wrdata1     => sh_result,      -- in  unsigned(31 downto 0);
+    wrdata_sel0 => result_sel_alu, -- in  boolean;
+    dstreg_wren => dstreg_wren,    -- in  boolean;
+    -- read result q available on the next clock after rdaddr
+    q => rf_readdata -- out unsigned(31 downto 0)
+  );
+
 
   -- data bus address/writedata/byteenable/readdata_bi
   process (all)
