@@ -261,12 +261,12 @@ begin
     s_reset       => s_reset,                               -- in  boolean; -- synchronous reset
     fetch         => PH_Fetch,                              -- in  boolean;
     execute       => PH_Execute,                            -- in  boolean;
-    indirect_jump => PH_Execute and instr_class=INSTR_CLASS_INDIRECT_JUMP, -- in  boolean;
+    indirect_jump => PH_Regfile1 and instr_class=INSTR_CLASS_INDIRECT_JUMP, -- in  boolean;
     direct_jump   => PH_Regfile1 and instr_class=INSTR_CLASS_DIRECT_JUMP,   -- in  boolean;
     branch        => PH_Branch,                             -- in  boolean;
     branch_taken  => cmp_result,                            -- in  boolean;
     imm26         => instr_imm26,                           -- in  unsigned(25 downto 0);
-    reg_a         => reg_a,                                 -- in  unsigned(31 downto 0);
+    reg_a         => rf_readdata,                           -- in  unsigned(31 downto 0);
     addr          => pc,                                    -- out unsigned(31 downto 2)
     nextpc        => nextpc                                 -- out unsigned(31 downto 2)
    );
@@ -295,7 +295,9 @@ begin
 
         if PH_Regfile1 then
           if instr_class=INSTR_CLASS_DIRECT_JUMP then
-            PH_Fetch <= true; -- last execution stage of direct branch
+            PH_Fetch <= true; -- last execution stage of direct jumps
+          elsif instr_class=INSTR_CLASS_INDIRECT_JUMP then
+            PH_Fetch <= true; -- last execution stage of indirect jumps
           elsif srcreg_class=SRC_REG_CLASS_AB and instr_b/=0 then
             PH_Regfile2 <= true;
           else
