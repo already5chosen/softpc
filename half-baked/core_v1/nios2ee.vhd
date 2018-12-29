@@ -162,7 +162,7 @@ begin
    immx <=
      unsigned(resize(signed(instr_imm16), 32)) when IMM16_CLASS_s16,
      resize(instr_imm16, 32)                   when IMM16_CLASS_z16,
-     resize(instr_imm16, 32) sll 16            when others;
+     shift_left(resize(instr_imm16, 32), 16)   when others;
 
   -- post-decode, results available in PH_Execute stage
   process (clk)
@@ -260,13 +260,13 @@ begin
     clk          => clk,                                           -- in  std_logic;
     s_reset      => s_reset,                                       -- in  boolean; -- synchronous reset
     fetch        => PH_Fetch,                                      -- in  boolean;
-    jump         => PH_Execute and (instr_class=INSTR_CLASS_JUMP), -- in  boolean;
+    execute      => PH_Execute,                                    -- in  boolean;
+    jump         => instr_class=INSTR_CLASS_JUMP,                  -- in  boolean;
     direct_jump  => srcreg_class/=SRC_REG_CLASS_A,                 -- in  boolean;
     branch       => PH_Branch,                                     -- in  boolean;
     branch_taken => cmp_result,                                    -- in  boolean;
     imm26        => instr_imm26,                                   -- in  unsigned(25 downto 0);
     reg_a        => reg_a,                                         -- in  unsigned(31 downto 0);
-    immx         => reg_b,                                         -- in  unsigned(31 downto 0);
     addr         => pc,                                            -- out unsigned(31 downto 2)
     nextpc       => nextpc                                         -- out unsigned(31 downto 2)
    );
@@ -380,10 +380,6 @@ begin
 
       if PH_Regfile2 then
         reg_b <= rf_readdata; -- latch register B
-      end if;
-
-      if PH_Execute then
-        reg_b <= immx;        -- for branches
       end if;
 
       -- register file write
