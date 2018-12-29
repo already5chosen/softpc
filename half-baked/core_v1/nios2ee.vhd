@@ -260,7 +260,7 @@ begin
     clk           => clk,                                   -- in  std_logic;
     s_reset       => s_reset,                               -- in  boolean; -- synchronous reset
     fetch         => PH_Fetch,                              -- in  boolean;
-    execute       => PH_Execute,                            -- in  boolean;
+    incremet_addr => PH_Regfile1,                           -- in  boolean;
     indirect_jump => PH_Regfile1 and instr_class=INSTR_CLASS_INDIRECT_JUMP, -- in  boolean;
     direct_jump   => PH_Regfile1 and instr_class=INSTR_CLASS_DIRECT_JUMP,   -- in  boolean;
     branch        => PH_Branch,                             -- in  boolean;

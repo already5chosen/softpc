@@ -8,7 +8,7 @@ entity n2program_counter is
   clk           : in  std_logic;
   s_reset       : in  boolean; -- synchronous reset
   fetch         : in  boolean;
-  execute       : in  boolean;
+  incremet_addr : in  boolean;
   indirect_jump : in  boolean;
   direct_jump   : in  boolean;
   branch        : in  boolean;
@@ -26,12 +26,15 @@ begin
     variable immx : unsigned(31 downto 0);
   begin
     if rising_edge(clk) then
-      nextpc <= addr + 1;
+
+      if fetch then
+        nextpc <= addr + 1;
+      end if;
 
       -- sign-extend imm16
       immx := unsigned(resize(signed(imm26(15 downto 0)), 32));
 
-      if execute then
+      if incremet_addr then
         addr <= nextpc;
         nextpc <= nextpc + immx(nextpc'high downto 2); -- calculate address of taken branch
       end if;
