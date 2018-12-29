@@ -78,7 +78,6 @@ architecture a of nios2ee is
 
   subtype u32 is unsigned(31 downto 0);
   signal pc    : unsigned(31 downto 2);
-  signal pc_msbits : unsigned(31 downto 28);
 
   alias instr_s1 : u32 is tcm_readdata;
   -- instruction decode signals
@@ -254,7 +253,24 @@ begin
     result   => sh_result      -- out unsigned(DATA_WIDTH-1 downto 0)
   );
 
-  process (clk, reset)
+  -- program counter/jumps/branches
+  iu:entity work.n2program_counter
+   generic map (RESET_ADDR => RESET_ADDR)
+   port map (
+    clk          => clk,                                           -- in  std_logic;
+    s_reset      => s_reset,                                       -- in  boolean; -- synchronous reset
+    fetch        => PH_Fetch,                                      -- in  boolean;
+    jump         => PH_Execute and (instr_class=INSTR_CLASS_JUMP), -- in  boolean;
+    direct_jump  => srcreg_class/=SRC_REG_CLASS_A,                 -- in  boolean;
+    branch       => PH_Branch,                                     -- in  boolean;
+    branch_taken => cmp_result,                                    -- in  boolean;
+    imm26        => instr_imm26,                                   -- in  unsigned(25 downto 0);
+    reg_a        => reg_a,                                         -- in  unsigned(31 downto 0);
+    immx         => reg_b,                                         -- in  unsigned(31 downto 0);
+    addr         => pc                                             -- out unsigned(31 downto 2)
+   );
+
+  process (clk)
   begin
     if rising_edge(clk) then
       dm_write <= '0';
@@ -272,12 +288,7 @@ begin
 
       if s_reset then
         PH_Fetch <= true;
-        pc       <= to_unsigned(RESET_ADDR/4, 30);
       else
-        if PH_Fetch then
-          pc        <= pc + 1;
-          pc_msbits <= pc(31 downto 28);
-        end if;
         PH_Decode   <= PH_Fetch;
         PH_Regfile1 <= PH_Decode;
 
@@ -306,20 +317,10 @@ begin
             end if;
           else
             PH_Fetch <= true;
-            if instr_class=INSTR_CLASS_JUMP then
-              if srcreg_class=SRC_REG_CLASS_A then
-                pc <= reg_a(31 downto 2);      -- indirect jumps, calls and returns
-              else
-                pc <= pc_msbits & instr_imm26; -- direct jumps and calls
-              end if;
-            end if;
           end if;
         end if;
 
         if PH_Branch then
-          if cmp_result then
-            pc <= pc + reg_b(31 downto 2); -- branch taken
-          end if;
           PH_Fetch <= true;
         end if;
 
