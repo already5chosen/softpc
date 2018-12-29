@@ -261,7 +261,7 @@ begin
     s_reset       => s_reset,                               -- in  boolean; -- synchronous reset
     fetch         => PH_Fetch,                              -- in  boolean;
     execute       => PH_Execute,                            -- in  boolean;
-    indirect_jump => instr_class=INSTR_CLASS_INDIRECT_JUMP, -- in  boolean;
+    indirect_jump => PH_Execute and instr_class=INSTR_CLASS_INDIRECT_JUMP, -- in  boolean;
     direct_jump   => PH_Regfile1 and instr_class=INSTR_CLASS_DIRECT_JUMP,   -- in  boolean;
     branch        => PH_Branch,                             -- in  boolean;
     branch_taken  => cmp_result,                            -- in  boolean;
