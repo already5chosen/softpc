@@ -32,51 +32,60 @@ architecture a of n2alu is
   end function;
 
   signal op_reg   : natural range 0 to 15;
-  signal diff     : unsigned(DATA_WIDTH downto 0);
+  signal cmp_op_reg : natural range 0 to 7;
   signal ge, eq   : boolean;
-  signal aresult, aresult_reg : word_t;
+  signal logic_r  : word_t;
+  signal addsub_r : unsigned(DATA_WIDTH downto 0);
   signal msb_a, msb_b : std_logic;
 begin
 
-  with op select
-   aresult <=
-    a and b     when ALU_OP_AND,
-    a or  b     when ALU_OP_OR ,
-    a xor b     when ALU_OP_XOR,
-    not(a or b) when ALU_OP_NOR,
-    a +   b     when others;
-
-  eq <= diff(31 downto 0) = 0;
-  ge <= -- signed comparison
-    (msb_a='0'   and msb_b='1') or
-    (msb_a=msb_b and diff(31)='0');
-  with op_reg mod 8 select
-   cmp_result <=
-    ge           when ALU_OP_CMPGE  mod 8,
-    not ge       when ALU_OP_CMPLT  mod 8,
-    not eq       when ALU_OP_CMPNE  mod 8,
-    eq           when ALU_OP_CMPEQ  mod 8,
-    diff(32)='0' when ALU_OP_CMPGEU mod 8,
-    diff(32)='1' when ALU_OP_CMPLTU mod 8,
-    true         when others;
-
   process (clk)
+   variable logic_op : natural range 0 to 3;
   begin
     if rising_edge(clk) then
       if start then
+
+        logic_op := op mod 4;
+        case logic_op is
+          when ALU_OP_AND mod 4 => logic_r <= a and b;
+          when ALU_OP_OR  mod 4 => logic_r <= a or  b;
+          when ALU_OP_XOR mod 4 => logic_r <= a xor b;
+          when ALU_OP_NOR mod 4 => logic_r <= not(a or b);
+        end case;
+
+        if op < ALU_OP_SUB then
+          addsub_r <= resize(a, DATA_WIDTH+1) + resize(b, DATA_WIDTH+1);
+        else
+          addsub_r <= resize(a, DATA_WIDTH+1) - resize(b, DATA_WIDTH+1);
+        end if;
+
         op_reg <= op;
-        aresult_reg <= aresult;
-        diff  <= resize(a, 33) - resize(b, 33);
         msb_a <= a(a'high);
         msb_b <= b(b'high);
       end if;
     end if;
   end process;
 
-  agu_result <= aresult_reg;
+  eq <= addsub_r(DATA_WIDTH-1 downto 0) = 0;
+  ge <= -- signed comparison
+    (msb_a='0'   and msb_b='1') or
+    (msb_a=msb_b and addsub_r(DATA_WIDTH-1)='0');
+  cmp_op_reg <= op_reg mod 8;
+
+  with cmp_op_reg select
+   cmp_result <=
+    ge                       when ALU_OP_CMPGE  mod 8,
+    not ge                   when ALU_OP_CMPLT  mod 8,
+    not eq                   when ALU_OP_CMPNE  mod 8,
+    eq                       when ALU_OP_CMPEQ  mod 8,
+    addsub_r(DATA_WIDTH)='0' when ALU_OP_CMPGEU mod 8,
+    addsub_r(DATA_WIDTH)='1' when ALU_OP_CMPLTU mod 8,
+    true                     when others;
+
+  agu_result <= addsub_r(DATA_WIDTH-1 downto 0);
   result <=
-    aresult_reg       when op_reg < ALU_OP_SUB else
-    diff(31 downto 0) when op_reg = ALU_OP_SUB else
-    to_uns(cmp_result);
+    logic_r            when op_reg < ALU_OP_ADD else
+    to_uns(cmp_result) when op_reg > ALU_OP_SUB else
+    agu_result;
 
 end architecture a;
