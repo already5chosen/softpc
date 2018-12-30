@@ -50,7 +50,6 @@ begin
           when MEM_OP_H => bysh_op_align <= "10";
           when others   => bysh_op_align <= "00";
         end case;
-        bysh_rshift   <= readdata_bi;
         sh_op_shift   <= '0';
         sh_op_arith   <= fu_op_u(MEM_OP_BIT_UNS);
         bysh_b_lsbits <= false;
@@ -58,7 +57,6 @@ begin
       else
         -- shift/rotate instructions
         bysh_op_align <= "00";
-        bysh_rshift   <= byte_rshift;
         sh_op_shift   <= fu_op_u(SHIFTER_OP_BIT_SHIFT);
         sh_op_arith   <= fu_op_u(SHIFTER_OP_BIT_ARITH);
         bysh_b_lsbits <= byte_b_lsbits;
@@ -66,9 +64,14 @@ begin
       end if;
 
       -- byte shifter input mux
-      bysh_a <= bish_result;
       if readdatavalid then
-         bysh_a <= readdata;
+        -- Load alignment
+        bysh_a <= readdata;
+        bysh_rshift <= readdata_bi;
+      else
+        -- shift/rotate instructions
+        bysh_a <= bish_result;
+        bysh_rshift <= byte_rshift;
       end if;
 
     end if;
