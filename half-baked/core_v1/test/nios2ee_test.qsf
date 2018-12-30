@@ -70,6 +70,7 @@ set_global_assignment -name VHDL_FILE ../nios2ee.vhd
 set_global_assignment -name VHDL_FILE ../n2decode_definitions.vhd
 set_global_assignment -name VHDL_FILE ../n2decode.vhd
 set_global_assignment -name VHDL_FILE ../n2alu.vhd
+set_global_assignment -name VHDL_FILE ../n2shift_align.vhd
 set_global_assignment -name VHDL_FILE ../n2byte_shifter.vhd
 set_global_assignment -name VHDL_FILE ../n2bit_shifter.vhd
 set_global_assignment -name VHDL_FILE ../n2register_file.vhd

@@ -64,15 +64,18 @@ set_parameter -name RESET_ADDR 32
 set_parameter -name TCM_ADDR_WIDTH 13
 
 
+
 set_global_assignment -name VHDL_FILE nios2ee.vhd
 set_global_assignment -name VHDL_FILE n2decode_definitions.vhd
 set_global_assignment -name VHDL_FILE n2decode.vhd
 set_global_assignment -name VHDL_FILE n2alu.vhd
+set_global_assignment -name VHDL_FILE n2shift_align.vhd
 set_global_assignment -name VHDL_FILE n2bit_shifter.vhd
 set_global_assignment -name VHDL_FILE n2byte_shifter.vhd
+set_global_assignment -name VHDL_FILE n2program_counter.vhd
+set_global_assignment -name VHDL_FILE n2register_file.vhd
 set_global_assignment -name VHDL_FILE ../n2decode/shifter_opcodes.vhd
 set_global_assignment -name VHDL_FILE ../n2decode/n2opcodes.vhd
 set_global_assignment -name VHDL_FILE ../n2decode/memory_opcodes.vhd
 set_global_assignment -name VHDL_FILE ../n2decode/alu_opcodes.vhd
-
 set_instance_assignment -name PARTITION_HIERARCHY root_partition -to | -section_id Top
