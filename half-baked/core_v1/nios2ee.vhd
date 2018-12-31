@@ -80,7 +80,7 @@ architecture a of nios2ee is
 
   alias instr_s1 : u32 is tcm_readdata;
   -- instruction decode signals
-  signal instr_s2 : u32;
+  signal instr_s2 : unsigned(31 downto 6);
   -- alias instr_op    : unsigned(5  downto 0) is tcm_readdata( 5 downto  0);
   alias instr_imm16 : unsigned(15 downto 0) is instr_s2(21 downto  6); -- I-type
   alias instr_b     : unsigned(4  downto 0) is instr_s2(26 downto 22); -- I-type and R-type
@@ -319,13 +319,16 @@ begin
       fu_op_reg_i <= fu_op_i;
       -- register file read address
       if PH_Decode then
-        instr_s2  <= instr_s1;
+        instr_s2  <= instr_s1(31 downto 6);
         rf_wraddr <= 31; -- prepare for call
       end if;
 
       if PH_Regfile1 then
         reg_a <= rf_readdata; -- latch register A
         reg_b <= immx;        -- type-I instructions except branches or shifts by immediate - the second source operand is immediate
+        if srcreg_class=SRC_REG_CLASS_AB then
+          reg_b <= (others => '0'); -- zeroing is necessary for case of instr_b=0 where we skip over PH_Regfile2 stage
+        end if;
         if r_type then
           rf_wraddr <= to_integer(instr_c); -- r[C]
         else
