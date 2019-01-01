@@ -143,7 +143,7 @@ begin
     start        => PH_Decode,    -- in  boolean;
     instruction  => instr_s1,     -- in  unsigned(31 downto 0);
     -- decode results are available on the next clock after start
-    r_type       => r_type,       -- buffer boolean;
+    r_type       => r_type,       -- out boolean;
     instr_class  => instr_class , -- out instr_class_t;
     srcreg_class => srcreg_class, -- out src_reg_class_t;
     writeback_ex => writeback_ex, -- out boolean; -- true when destination register is updated with result of PH_execute stage

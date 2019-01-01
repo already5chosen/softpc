@@ -9,7 +9,7 @@ entity n2decode is
   start        : in  boolean;
   instruction  : in  unsigned(31 downto 0);
   -- decode results are available on the next clock after start
-  r_type       : buffer boolean;
+  r_type       : out boolean;
   instr_class  : out instr_class_t;
   srcreg_class : out src_reg_class_t;
   writeback_ex : out boolean;  -- true when destination register is updated with result of PH_execute stage
