@@ -94,8 +94,8 @@ architecture a of nios2ee is
   signal instr_class  : instr_class_t;
   signal srcreg_class : src_reg_class_t;
   signal imm16_class  : imm16_class_t;
-  signal fu_op_i, fu_op_reg_i : natural range 0 to 15; -- ALU, shift or memory(LSU) unit internal opcode
-  signal fu_op_reg_u : unsigned(3 downto 0);  -- unsigned representation of fu_op_i
+  signal fu_op_i : natural range 0 to 15; -- ALU, shift or memory(LSU) unit internal opcode
+  signal fu_op_u : unsigned(3 downto 0);  -- unsigned representation of fu_op_i
   signal reg_a, reg_b : u32;
   signal immx         : u32; -- imm16 field, properly extended to 32 bits
 
@@ -152,7 +152,7 @@ begin
     imm16_class  => imm16_class,  -- out imm16_class_t;
     fu_op        => fu_op_i       -- out natural range 0 to 15  -- ALU, shift or memory(LSU) unit internal opcode
    );
-  fu_op_reg_u <= to_unsigned(fu_op_reg_i, 4);
+  fu_op_u <= to_unsigned(fu_op_i, 4);
   with imm16_class select
    immx <=
      unsigned(resize(signed(instr_imm16), 32)) when IMM16_CLASS_s16,
@@ -266,7 +266,7 @@ begin
             PH_Branch <= true;
           elsif instr_class=INSTR_CLASS_MEMORY then
             PH_Memory_Address <= true;
-            if fu_op_reg_u(MEM_OP_BIT_STORE)='1' then
+            if fu_op_u(MEM_OP_BIT_STORE)='1' then
               dm_write <= '1';
             else
               dm_read  <= '1';
@@ -316,7 +316,6 @@ begin
   begin
     if rising_edge(clk) then
 
-      fu_op_reg_i <= fu_op_i;
       -- register file read address
       if PH_Decode then
         instr_s2  <= instr_s1(31 downto 6);
@@ -372,7 +371,7 @@ begin
     addr := agu_result;
     bi := to_integer(addr) mod 4;
     byteenable <= (others => '0');
-    case fu_op_reg_i mod 4 is
+    case fu_op_i mod 4 is
       when MEM_OP_B =>
         byteenable(bi) <= '1';
         writedata <= rf_readdata_b & rf_readdata_b & rf_readdata_b & rf_readdata_b;
