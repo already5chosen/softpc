@@ -97,7 +97,6 @@ architecture a of nios2ee is
   signal fu_op_i : natural range 0 to 15; -- ALU, shift or memory(LSU) unit internal opcode
   signal fu_op_u : unsigned(3 downto 0);  -- unsigned representation of fu_op_i
   signal reg_a, reg_b : u32;
-  signal immx         : u32; -- imm16 field, properly extended to 32 bits
 
   -- ALU/AGU
   signal alu_op : natural range 0 to 15;
@@ -153,11 +152,6 @@ begin
     fu_op        => fu_op_i       -- out natural range 0 to 15  -- ALU, shift or memory(LSU) unit internal opcode
    );
   fu_op_u <= to_unsigned(fu_op_i, 4);
-  with imm16_class select
-   immx <=
-     unsigned(resize(signed(instr_imm16), 32)) when IMM16_CLASS_s16,
-     resize(instr_imm16, 32)                   when IMM16_CLASS_z16,
-     shift_left(resize(instr_imm16, 32), 16)   when others;
 
   -- post-decode, results available in PH_Execute stage
   process (clk)
@@ -324,10 +318,6 @@ begin
 
       if PH_Regfile1 then
         reg_a <= rf_readdata; -- latch register A
-        reg_b <= immx;        -- type-I instructions except branches or shifts by immediate - the second source operand is immediate
-        if srcreg_class=SRC_REG_CLASS_AB then
-          reg_b <= (others => '0'); -- zeroing is necessary for case of instr_b=0 where we skip over PH_Regfile2 stage
-        end if;
         if r_type then
           rf_wraddr <= to_integer(instr_c); -- r[C]
         else
@@ -335,13 +325,57 @@ begin
         end if;
       end if;
 
-      if PH_Regfile2 then
-        reg_b <= rf_readdata; -- latch register B
-      end if;
-
       -- register file write
       result_sel_alu <= instr_class=INSTR_CLASS_ALU;
 
+    end if;
+  end process;
+
+  -- reg_b as a source mux
+  process (clk)
+    constant sel_imm : natural := 0;
+    constant sel_rf  : natural := 1;
+    constant sel_0   : natural := 2;
+    constant sel_1   : natural := 3;
+    subtype l_sel_t is natural range sel_imm to sel_0;
+    subtype h_sel_t is natural range sel_imm to sel_1;
+    variable l_sel : l_sel_t;
+    variable h_sel : h_sel_t;
+  begin
+    if rising_edge(clk) then
+      if PH_Regfile1 then
+        -- type-I instructions except branches or shifts by immediate - the second source operand is immediate
+        if srcreg_class=SRC_REG_CLASS_AB then
+           l_sel := sel_0;
+           h_sel := sel_0;
+        elsif imm16_class = IMM16_CLASS_h16 then
+           l_sel := sel_0;
+           h_sel := sel_imm;
+        else
+           l_sel := sel_imm;
+           if imm16_class = IMM16_CLASS_s16 and instr_imm16(15)='1' then
+             h_sel := sel_1;
+           else
+             h_sel := sel_0;
+           end if;
+        end if;
+      else
+        l_sel := sel_rf ;
+        h_sel := sel_rf ;
+      end if;
+
+      case l_sel is
+        when sel_imm => reg_b(15 downto 0) <= instr_imm16;
+        when sel_rf  => reg_b(15 downto 0) <= rf_readdata(15 downto 0);
+        when sel_0   => reg_b(15 downto 0) <= (others => '0');
+      end case;
+
+      case h_sel is
+        when sel_imm => reg_b(31 downto 16) <= instr_imm16;
+        when sel_rf  => reg_b(31 downto 16) <= rf_readdata(31 downto 16);
+        when sel_0   => reg_b(31 downto 16) <= (others => '0');
+        when sel_1   => reg_b(31 downto 16) <= (others => '1');
+      end case;
     end if;
   end process;
 
