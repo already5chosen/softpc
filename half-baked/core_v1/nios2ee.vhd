@@ -90,7 +90,7 @@ architecture a of nios2ee is
   alias instr_c     : unsigned(4  downto 0) is instr_s2(21 downto 17); -- R-type
   alias instr_imm26 : unsigned(25 downto 0) is instr_s2(31 downto  6); -- J-type
 
-  signal r_type, writeback_ex, is_call, is_next_pc : boolean;
+  signal r_type, writeback_ex, is_call, is_next_pc, is_br : boolean;
   signal instr_class  : instr_class_t;
   signal srcreg_class : src_reg_class_t;
   signal imm16_class  : imm16_class_t;
@@ -144,6 +144,7 @@ begin
     -- decode results are available on the next clock after start
     r_type       => r_type,       -- out boolean;
     instr_class  => instr_class , -- out instr_class_t;
+    is_br        => is_br,        -- out boolean;  -- unconditional branch
     srcreg_class => srcreg_class, -- out src_reg_class_t;
     writeback_ex => writeback_ex, -- out boolean; -- true when destination register is updated with result of PH_execute stage
     is_call      => is_call,      -- out boolean;
@@ -209,7 +210,7 @@ begin
     indirect_jump => PH_Regfile1 and instr_class=INSTR_CLASS_INDIRECT_JUMP, -- in  boolean;
     direct_jump   => PH_Regfile1 and instr_class=INSTR_CLASS_DIRECT_JUMP,   -- in  boolean;
     branch        => PH_Branch,                             -- in  boolean;
-    branch_taken  => cmp_result,                            -- in  boolean;
+    branch_taken  => cmp_result or is_br,                   -- in  boolean;
     imm26         => instr_imm26,                           -- in  unsigned(25 downto 0);
     reg_a         => rf_readdata,                           -- in  unsigned(31 downto 0);
     addr          => pc,                                    -- out unsigned(31 downto 2)
@@ -243,6 +244,8 @@ begin
             PH_Fetch <= true; -- last execution stage of direct jumps
           elsif instr_class=INSTR_CLASS_INDIRECT_JUMP then
             PH_Fetch <= true; -- last execution stage of indirect jumps
+          elsif is_br then
+            PH_Branch <= true;
           elsif srcreg_class=SRC_REG_CLASS_AB and instr_b/=0 then
             PH_Regfile2 <= true;
           else

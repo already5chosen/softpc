@@ -11,5 +11,4 @@ package alu_opcodes is
   constant ALU_OP_CMPEQ   : natural := 12;
   constant ALU_OP_CMPGEU  : natural := 13;
   constant ALU_OP_CMPLTU  : natural := 14;
-  constant ALU_OP_TRUE    : natural := 15; -- for BR instruction
 end package alu_opcodes;

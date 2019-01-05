@@ -11,6 +11,7 @@ entity n2decode is
   -- decode results are available on the next clock after start
   r_type       : out boolean;
   instr_class  : out instr_class_t;
+  is_br        : out boolean;  -- unconditional branch
   srcreg_class : out src_reg_class_t;
   writeback_ex : out boolean;  -- true when destination register is updated with result of PH_execute stage
   is_call      : out boolean;  -- active for call instructions an the next clock after start
@@ -71,6 +72,7 @@ begin
     imm16_class  <= IMM16_CLASS_z16;
     writeback_ex <= false;
     fu_op        <= 0;
+    is_br        <= false;
 
     if not r_type then
       case to_integer(op_reg) is
@@ -101,7 +103,7 @@ begin
         when OP_BR    =>
           instr_class  <= INSTR_CLASS_BRANCH;
           imm16_class  <= IMM16_CLASS_s16;
-          fu_op        <= ALU_OP_TRUE;
+          is_br        <= true;
 
         when OP_LDB   =>
           instr_class  <= INSTR_CLASS_MEMORY;

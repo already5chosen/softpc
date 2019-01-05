@@ -37,6 +37,7 @@ architecture a of n2alu is
   signal logic_r  : word_t;
   signal addsub_r : unsigned(DATA_WIDTH downto 0);
   signal msb_a, msb_b : std_logic;
+  signal ne_bytes : unsigned(DATA_WIDTH/8-1 downto 0);
 begin
 
   process (clk)
@@ -62,11 +63,20 @@ begin
         op_reg <= op;
         msb_a <= a(a'high);
         msb_b <= b(b'high);
+
+        for k in 0 to DATA_WIDTH/8-1 loop
+          if a(k*8+7 downto k*8) = b(k*8+7 downto k*8) then
+            ne_bytes(k) <= '0';
+          else
+            ne_bytes(k) <= '1';
+          end if;
+        end loop;
+
       end if;
     end if;
   end process;
 
-  eq <= addsub_r(DATA_WIDTH-1 downto 0) = 0;
+  eq <= ne_bytes = 0;
   ge <= -- signed comparison
     (msb_a='0'   and msb_b='1') or
     (msb_a=msb_b and addsub_r(DATA_WIDTH-1)='0');
@@ -80,7 +90,7 @@ begin
     eq                       when ALU_OP_CMPEQ  mod 8,
     addsub_r(DATA_WIDTH)='0' when ALU_OP_CMPGEU mod 8,
     addsub_r(DATA_WIDTH)='1' when ALU_OP_CMPLTU mod 8,
-    true                     when others;
+    addsub_r(0)='1'          when others;
 
   agu_result <= addsub_r(DATA_WIDTH-1 downto 0);
   result <=
