@@ -278,6 +278,7 @@ begin
 
         if PH_Execute then
           dstreg_wren <= writeback_ex;
+          writedata <= std_logic_vector(writedata_mux);
           if instr_class=INSTR_CLASS_BRANCH then
             PH_Branch <= true;
           elsif instr_class=INSTR_CLASS_MEMORY then
@@ -441,15 +442,6 @@ begin
     dm_address(1 downto 0) <= (others => '0');
 
     is_tcm <= (to_integer(addr)/2**TCM_ADDR_WIDTH)=TCM_REGION_IDX;
-  end process;
-
-  process (clk)
-  begin
-    if rising_edge(clk) then
-      if PH_Execute then
-        writedata <= std_logic_vector(writedata_mux);
-      end if;
-    end if;
   end process;
 
   tcm_rdaddress <=
