@@ -7,7 +7,7 @@ entity n2program_counter is
  port (
   clk           : in  std_logic;
   s_reset       : in  boolean; -- synchronous reset
-  fetch         : in  boolean;
+  calc_nextpc   : in  boolean;
   incremet_addr : in  boolean;
   indirect_jump : in  boolean;
   direct_jump   : in  boolean;
@@ -27,7 +27,7 @@ begin
   begin
     if rising_edge(clk) then
 
-      if fetch then
+      if calc_nextpc then
         nextpc <= addr + 1;
       end if;
 
