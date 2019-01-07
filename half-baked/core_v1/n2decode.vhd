@@ -368,7 +368,7 @@ begin
           instr_class  <= INSTR_CLASS_SHIFT;
           srcreg_class <= SRC_REG_CLASS_AB;
           writeback_ex <= true;
-          fu_op        <= SHIFTER_OP_ROL;
+          fu_op        <= SHIFTER_OP_ROR;
 
         when OPX_FLUSHI =>
           null;
