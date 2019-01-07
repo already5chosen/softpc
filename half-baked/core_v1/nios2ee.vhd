@@ -43,7 +43,7 @@ architecture a of nios2ee is
   -- Drive instruction address on tcm_rdaddress.
   -- Calculate NextPC
   -- Write result of the previous instruction into register file.
-  -- When previous instruction was store - drive memory address/control/writedata/*_writedata and *_byteenable buses
+  -- When previous instruction was store - drive memory address/control/*_writedata and *_byteenable buses
   -- For Avalon-mm accesses remain at this phase until fabric de-asserts avm_waitrequest signal
 
   signal PH_Decode : boolean;
@@ -56,7 +56,7 @@ architecture a of nios2ee is
   -- For calls - write NextPC to RA
   -- Calculate branch target of taken PC-relative branches
   -- For jumps and calls - reload PC and finish
-  -- For rest of instruction -  reload PC and with NextPC and continue
+  -- For rest of instruction -  reload PC with NextPC and continue
 
   signal PH_Regfile2 : boolean;
   -- [Optional] used by instructions with 2 register sources except for integer stores
@@ -78,7 +78,7 @@ architecture a of nios2ee is
 
   signal PH_Load_Data : boolean;
   -- [Optional] used only by memory loads
-  -- For byr and half-word accesses align and sign-extend or zero-extend Load data
+  -- For byte and half-word accesses align and sign-extend or zero-extend Load data
   -- For Avalon-mm accesses remain at this phase until fabric asserts avm_readdatavalid signal
 
   subtype u32 is unsigned(31 downto 0);
