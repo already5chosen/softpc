@@ -100,12 +100,12 @@ architecture a of nios2ee is
   signal instr_class  : instr_class_t;
   signal srcreg_class : src_reg_class_t;
   signal imm16_class  : imm16_class_t;
-  signal fu_op_i : natural range 0 to 15; -- ALU, shift or memory(LSU) unit internal opcode
-  signal fu_op_u : unsigned(3 downto 0);  -- unsigned representation of fu_op_i
+  signal alu_op, mem_op_i : natural range 0 to 15; -- ALU and memory(LSU) unit internal opcode
+  signal shifter_op : natural range 0 to 7;  -- shift/rotate unit internal opcode
+  signal mem_op_u : unsigned(3 downto 0);  -- unsigned representation of mem_op_i
   signal reg_a, reg_b : u32;
 
   -- ALU/AGU
-  signal alu_op : natural range 0 to 15;
   signal alu_result, agu_result : u32;
   signal cmp_result : boolean; -- for branches
 
@@ -157,22 +157,11 @@ begin
     is_call      => is_call,      -- out boolean;
     is_next_pc   => is_next_pc,   -- out boolean;
     imm16_class  => imm16_class,  -- out imm16_class_t;
-    fu_op        => fu_op_i       -- out natural range 0 to 15  -- ALU, shift or memory(LSU) unit internal opcode
+    shifter_op   => shifter_op,   -- out natural range 0 to 7;  -- shift/rotate unit internal opcode
+    mem_op       => mem_op_i,     -- out natural range 0 to 15; -- memory(LSU) unit internal opcode
+    alu_op       => alu_op        -- out natural range 0 to 15  -- ALU unit internal opcode
    );
-  fu_op_u <= to_unsigned(fu_op_i, 4);
-
-  -- post-decode, results available in PH_Execute stage
-  process (clk)
-  begin
-    if rising_edge(clk) then
-      -- ALU/AGU
-      if instr_class=INSTR_CLASS_MEMORY then
-        alu_op <= ALU_OP_ADD; -- AGU
-      else
-        alu_op <= fu_op_i;    -- ALU
-      end if;
-    end if;
-  end process;
+  mem_op_u <= to_unsigned(mem_op_i, 4);
 
   -- ALU/AGU
   a:entity work.n2alu
@@ -192,18 +181,19 @@ begin
   -- shifter/Load alignment
   sha:entity work.n2shift_align
    port map (
-    clk           => clk,               -- in  std_logic;
-    instr_class   => instr_class,       -- in  instr_class_t;
-    fu_op_i       => fu_op_i,           -- in  natural range 0 to 15; -- ALU, shift or memory(LSU) unit internal opcode
+    clk           => clk,         -- in  std_logic;
+    instr_class   => instr_class, -- in  instr_class_t;
     -- shift/rotate inputs
-    a             => reg_a,             -- in  unsigned;
-    b             => reg_b(4 downto 0), -- in  unsigned;
+    sh_op_i       => shifter_op,                  -- in  natural range 0 to 7; -- shift/rotate unit internal opcode
+    a             => reg_a,                       -- in  unsigned;
+    b             => reg_b(4 downto 0),           -- in  unsigned;
     -- align/sign-extend load data inputs
-    readdata      => dm_readdata, -- in  unsigned;
+    ld_op_i       => mem_op_i,                    -- in  natural range 0 to 15; -- memory(LSU) unit internal opcode
+    readdata      => dm_readdata,                 -- in  unsigned;
     readdata_bi   => to_unsigned(readdata_bi, 2), -- in  unsigned; -- byte index of LS byte of load result in dm_readdata
-    readdatavalid => PH_Load_Data, -- in  boolean;
+    readdatavalid => PH_Load_Data,                -- in  boolean;
     -- result
-    result        => sh_result  -- out unsigned  -- result latency = 1 clock
+    result        => sh_result    -- out unsigned -- result latency = 1 clock
    );
 
   -- program counter/jumps/branches
@@ -282,7 +272,7 @@ begin
           if instr_class=INSTR_CLASS_BRANCH then
             PH_Branch <= true;
           elsif instr_class=INSTR_CLASS_MEMORY then
-            if fu_op_u(MEM_OP_BIT_STORE)='1' then
+            if mem_op_u(MEM_OP_BIT_STORE)='1' then
               dm_write <= '1';
               PH_Fetch <= true;
             else
@@ -420,7 +410,7 @@ begin
     addr := agu_result;
     bi := to_integer(addr) mod 4;
     byteenable <= (others => '0');
-    case fu_op_i mod 4 is
+    case mem_op_i mod 4 is
       when MEM_OP_B =>
         byteenable(bi) <= '1';
         writedata_mux <= rf_readdata_b & rf_readdata_b & rf_readdata_b & rf_readdata_b;
