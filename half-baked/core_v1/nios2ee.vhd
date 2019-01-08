@@ -41,12 +41,12 @@ architecture a of nios2ee is
   -- processing phases
   signal PH_Fetch : boolean;
   -- Drive instruction address on tcm_rdaddress.
-  -- Calculate NextPC
   -- Write result of the previous instruction into register file.
   -- When previous instruction was store - drive memory address/control/*_writedata and *_byteenable buses
   -- For Avalon-mm accesses remain at this phase until fabric de-asserts avm_waitrequest signal
 
   signal PH_Decode : boolean;
+  -- Calculate NextPC
   -- Drive register file address with index of register A
   -- Latch instruction word
 
@@ -70,6 +70,7 @@ architecture a of nios2ee is
   signal PH_Branch  : boolean;
   -- [Optional] used only by PC-relative branches
   -- Conditionally or unconditionally update PC with branch target
+  -- This phase overlaps with PH_Fetch of the next instruction
 
   signal PH_Load_Address : boolean;
   -- [Optional] used only by memory loads
@@ -202,7 +203,7 @@ begin
    port map (
     clk           => clk,                                   -- in  std_logic;
     s_reset       => s_reset,                               -- in  boolean; -- synchronous reset
-    calc_nextpc   => PH_Fetch,                              -- in  boolean;
+    calc_nextpc   => PH_Decode,                             -- in  boolean;
     incremet_addr => PH_Regfile1,                           -- in  boolean;
     indirect_jump => PH_Regfile1 and instr_class=INSTR_CLASS_INDIRECT_JUMP, -- in  boolean;
     direct_jump   => PH_Regfile1 and instr_class=INSTR_CLASS_DIRECT_JUMP,   -- in  boolean;
@@ -254,6 +255,7 @@ begin
           elsif instr_class=INSTR_CLASS_INDIRECT_JUMP then
             PH_Fetch <= true; -- last execution stage of indirect jumps
           elsif is_br then
+            PH_Fetch <= true; -- last execution stage of unconditional branch
             PH_Branch <= true;
           elsif srcreg_class=SRC_REG_CLASS_AB and instr_b/=0 then
             PH_Regfile2 <= true;
@@ -269,9 +271,7 @@ begin
         if PH_Execute then
           dstreg_wren <= writeback_ex;
           writedata <= std_logic_vector(writedata_mux);
-          if instr_class=INSTR_CLASS_BRANCH then
-            PH_Branch <= true;
-          elsif instr_class=INSTR_CLASS_MEMORY then
+          if instr_class=INSTR_CLASS_MEMORY then
             if mem_op_u(MEM_OP_BIT_STORE)='1' then
               dm_write <= '1';
               PH_Fetch <= true;
@@ -280,6 +280,9 @@ begin
             end if;
           else
             PH_Fetch <= true;
+            if instr_class=INSTR_CLASS_BRANCH then
+              PH_Branch <= true;
+            end if;
           end if;
         end if;
 

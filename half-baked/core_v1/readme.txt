@@ -42,26 +42,26 @@ almost to the end, before the next one is started:
  - For stores: drive memory address/control/*_writedata and *_byteenable buses
  - For Avalon-mm stores: remain at this phase until fabric de-asserts avm_waitrequest signal
 
-Writeback/Store phase of instruction overlaps with Fetch phase of the next instruction.
+Writeback/Store and Branch phases of instruction overlaps with Fetch phase of the next instruction.
 
 Cycle count:
 Jumps, calls, return                     - 3
-Unconditional branch                     - 4
+Unconditional branch                     - 3
 ALU/Shifter with immediate 2nd operand   - 4
 ALU/Shifter with R0 as the 2nd operand   - 4
 NOPs (cache control instructions etc...) - 4
 TCM stores                               - 4
 AVM stores                               - 4 + wait states (waitrequest='1')
 ALU/Shifter with Rb as the 2nd operand   - 5
-Conditional branches                     - 6
+Conditional branches                     - 5
 TCM loads                                - 6
 AVM loads                                - 6 + wait states (waitrequest='1') + latency (readdatavalid='0')
 
 Synthesis/Fitter results with Balanced target
-Fmax (10CL006YE144C8G) : 148.8 MHz
-Fmax (10CL006YE144C6G) : 164.0 MHz
+Fmax (10CL006YE144C8G) : 141.8 MHz
+Fmax (10CL006YE144C6G) : 169.2 MHz
 
-Area (10CL006YE144C8G) : 802 LCs + 1 M9K + 0 DSPs
+Area (10CL006YE144C8G) : 826 LCs + 1 M9K + 0 DSPs
 
 
 

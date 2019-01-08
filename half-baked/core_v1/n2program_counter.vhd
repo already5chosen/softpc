@@ -21,40 +21,41 @@ entity n2program_counter is
 end entity n2program_counter;
 
 architecture a of n2program_counter is
+  signal addr_reg : unsigned(addr'range);
 begin
   process (clk)
     variable immx : unsigned(31 downto 0);
   begin
     if rising_edge(clk) then
 
+      addr_reg <= addr;
+
       if calc_nextpc then
-        nextpc <= addr + 1;
+        nextpc <= addr_reg + 1;
       end if;
 
       -- sign-extend imm16
       immx := unsigned(resize(signed(imm26(15 downto 0)), 32));
 
       if incremet_addr then
-        addr <= nextpc;
+        addr_reg <= nextpc;
         nextpc <= nextpc + immx(nextpc'high downto 2); -- calculate address of taken branch
       end if;
 
-      if branch and branch_taken then
-        addr <= nextpc; -- branch taken
-      end if;
-
       if indirect_jump then
-        addr <= reg_a(addr'high downto 2); -- indirect jumps, calls and returns
+        addr_reg <= reg_a(addr'high downto 2); -- indirect jumps, calls and returns
       end if;
 
       if direct_jump then
-        addr(27 downto 2) <= imm26;  -- direct jumps and calls
+        addr_reg(27 downto 2) <= imm26;  -- direct jumps and calls
       end if;
 
       if s_reset then
-        addr <= to_unsigned(RESET_ADDR, addr'length);
+        addr_reg <= to_unsigned(RESET_ADDR, addr'length);
       end if;
     end if;
   end process;
+
+  addr <= nextpc when branch and branch_taken else addr_reg;
 
 end architecture a;
