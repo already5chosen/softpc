@@ -146,10 +146,7 @@ begin
   -- instruction decoder, results available in PH_Regfile1 stage
   d:entity work.n2decode
    port map (
-    clk          => clk,          -- in  std_logic;
-    start        => PH_Decode,    -- in  boolean;
     instruction  => instr_s1,     -- in  unsigned(31 downto 0);
-    -- decode results are available on the next clock after start
     r_type       => r_type,       -- out boolean;
     instr_class  => instr_class , -- out instr_class_t;
     is_br        => is_br,        -- out boolean;  -- unconditional branch
@@ -168,12 +165,9 @@ begin
   a:entity work.n2alu
    generic map (DATA_WIDTH => 32)
    port map (
-    clk    => clk        , -- in  std_logic;
-    start  => PH_Execute , -- in  boolean;
-    op     => alu_op     , -- in  natural range 0 to 15;
-    a      => reg_a      , -- in  unsigned(DATA_WIDTH-1 downto 0);
-    b      => reg_b      , -- in  unsigned(DATA_WIDTH-1 downto 0);
-    -- results are available on the next clock after start
+    op         => alu_op    , -- in  natural range 0 to 15;
+    a          => reg_a     , -- in  unsigned(DATA_WIDTH-1 downto 0);
+    b          => reg_b     , -- in  unsigned(DATA_WIDTH-1 downto 0);
     result     => alu_result, -- out unsigned(DATA_WIDTH-1 downto 0)
     agu_result => agu_result, -- out unsigned(DATA_WIDTH-1 downto 0)
     cmp_result => cmp_result  -- buffer boolean -- for branches
