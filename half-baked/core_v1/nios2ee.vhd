@@ -286,10 +286,6 @@ begin
           end if;
         end if;
 
-        if PH_Branch then
-          PH_Fetch <= true;
-        end if;
-
         if PH_Load_Address then
           is_tcm_reg <= is_tcm;
           PH_Load_Address <= true;
