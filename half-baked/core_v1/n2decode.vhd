@@ -10,6 +10,7 @@ entity n2decode is
   instruction  : in  unsigned(31 downto 0);
   -- decode results are available on the next clock after start
   r_type       : out boolean;
+  jump_class   : out jump_class_t;
   instr_class  : out instr_class_t;
   is_br        : out boolean;  -- unconditional branch
   srcreg_class : out src_reg_class_t;
@@ -52,10 +53,21 @@ begin
         op_reg <= op;
         r_type <= false;
         is_call <= op=OP_CALL;
+        case to_integer(op) is
+          when OP_CALL => jump_class <= JUMP_CLASS_DIRECT;
+          when OP_JMPI => jump_class <= JUMP_CLASS_DIRECT;
+          when others  => jump_class <= JUMP_CLASS_OTHERS;
+        end case;
         if op=OP_RTYPE then
           r_type <= true;
           op_reg <= opx;
           is_call <= opx=OPX_CALLR;
+          case to_integer(opx) is
+            when OPX_RET   => jump_class <= JUMP_CLASS_INDIRECT;
+            when OPX_JMP   => jump_class <= JUMP_CLASS_INDIRECT;
+            when OPX_CALLR => jump_class <= JUMP_CLASS_INDIRECT;
+            when others => null;
+          end case;
         end if;
       end if;
 
@@ -69,6 +81,7 @@ begin
   process(all)
   begin
 
+    -- jump_class   <= JUMP_CLASS_OTHERS;
     instr_class  <= INSTR_CLASS_ALU;
     srcreg_class <= SRC_REG_CLASS_NONE;
     imm16_class  <= IMM16_CLASS_z16;
@@ -79,10 +92,12 @@ begin
     if not r_type then
       case to_integer(op_reg) is
         when OP_CALL =>
-          instr_class  <= INSTR_CLASS_DIRECT_JUMP;
+          -- jump_class   <= JUMP_CLASS_DIRECT;
+          null;
 
         when OP_JMPI =>
-          instr_class  <= INSTR_CLASS_DIRECT_JUMP;
+          -- jump_class   <= JUMP_CLASS_DIRECT;
+          null;
 
         when OP_LDBU  =>
           instr_class  <= INSTR_CLASS_MEMORY;
@@ -345,7 +360,7 @@ begin
           null;
 
         when OPX_RET    =>
-          instr_class  <= INSTR_CLASS_INDIRECT_JUMP;
+          -- jump_class   <= JUMP_CLASS_INDIRECT;
           srcreg_class <= SRC_REG_CLASS_A;
 
         when OPX_NOR    =>
@@ -373,7 +388,7 @@ begin
           null;
 
         when OPX_JMP    =>
-          instr_class  <= INSTR_CLASS_INDIRECT_JUMP;
+          -- jump_class   <= JUMP_CLASS_INDIRECT;
           srcreg_class <= SRC_REG_CLASS_A;
 
         when OPX_AND    =>
@@ -426,7 +441,7 @@ begin
           null;
 
         when OPX_CALLR  =>
-          instr_class  <= INSTR_CLASS_INDIRECT_JUMP;
+          -- jump_class   <= JUMP_CLASS_INDIRECT;
           srcreg_class <= SRC_REG_CLASS_A;
 
         when OPX_XOR    =>

@@ -1,14 +1,27 @@
 package n2decode_definitions is
 
   -- instruction classes
-  type instr_class_t is (
-    INSTR_CLASS_ALU   , -- arithmetic/logic/comparison
-    INSTR_CLASS_SHIFT , -- shift/rotate
-    INSTR_CLASS_BRANCH, -- PC-relative branches
-    INSTR_CLASS_DIRECT_JUMP,   -- direct jump and call
-    INSTR_CLASS_INDIRECT_JUMP, -- indirect jumps, calls, returns
-    INSTR_CLASS_MEMORY  -- load/store
+  type jump_class_t is (
+    JUMP_CLASS_DIRECT,   -- direct jump and call
+    JUMP_CLASS_INDIRECT, -- indirect jumps, calls, returns
+    JUMP_CLASS_OTHERS    -- non-jumps
   );
+  -- constant JUMP_CLASS_DIRECT   : natural := 0;
+  -- constant JUMP_CLASS_INDIRECT : natural := 1;
+  -- constant JUMP_CLASS_OTHERS   : natural := 2;
+  -- subtype jump_class_t is natural range JUMP_CLASS_DIRECT to JUMP_CLASS_OTHERS;
+
+  -- type instr_class_t is ( -- for JUMP_CLASS_OTHERS
+    -- INSTR_CLASS_ALU   , -- arithmetic/logic/comparison
+    -- INSTR_CLASS_SHIFT , -- shift/rotate
+    -- INSTR_CLASS_BRANCH, -- PC-relative branches
+    -- INSTR_CLASS_MEMORY  -- load/store
+  -- );
+  constant INSTR_CLASS_ALU    : natural := 0;
+  constant INSTR_CLASS_BRANCH : natural := 1;
+  constant INSTR_CLASS_SHIFT  : natural := 2;
+  constant INSTR_CLASS_MEMORY : natural := 3;
+  subtype instr_class_t is natural range INSTR_CLASS_ALU to INSTR_CLASS_MEMORY;
 
   -- source register classes
   type src_reg_class_t is (

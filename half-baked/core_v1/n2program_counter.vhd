@@ -1,6 +1,7 @@
 library ieee;
 use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
+use work.n2decode_definitions.all;
 
 entity n2program_counter is
  generic ( RESET_ADDR : natural );
@@ -8,9 +9,8 @@ entity n2program_counter is
   clk           : in  std_logic;
   s_reset       : in  boolean; -- synchronous reset
   calc_nextpc   : in  boolean;
-  incremet_addr : in  boolean;
-  indirect_jump : in  boolean;
-  direct_jump   : in  boolean;
+  update_addr   : in  boolean;
+  jump_class    : in  jump_class_t;
   branch        : in  boolean;
   branch_taken  : in  boolean;
   imm26         : in  unsigned(25 downto 0);
@@ -37,17 +37,13 @@ begin
       -- sign-extend imm16
       immx := unsigned(resize(signed(imm26(15 downto 0)), 32));
 
-      if incremet_addr then
-        addr_reg <= nextpc;
+      if update_addr then
         nextpc <= nextpc + immx(nextpc'high downto 2); -- calculate address of taken branch
-      end if;
-
-      if indirect_jump then
-        addr_reg <= reg_a(addr'high downto 2); -- indirect jumps, calls and returns
-      end if;
-
-      if direct_jump then
-        addr_reg(27 downto 2) <= imm26;  -- direct jumps and calls
+        case jump_class is
+          when JUMP_CLASS_DIRECT   => addr_reg(27 downto 2) <= imm26;        -- direct jumps and calls
+          when JUMP_CLASS_INDIRECT => addr_reg <= reg_a(addr'high downto 2); -- indirect jumps, calls and returns
+          when JUMP_CLASS_OTHERS   => addr_reg <= nextpc;
+        end case;
       end if;
 
       if s_reset then

@@ -98,6 +98,7 @@ architecture a of nios2ee is
   alias instr_imm26 : unsigned(25 downto 0) is instr_s2(31 downto  6); -- J-type
 
   signal r_type, writeback_ex, is_call, is_next_pc, is_br : boolean;
+  signal jump_class   : jump_class_t;
   signal instr_class  : instr_class_t;
   signal srcreg_class : src_reg_class_t;
   signal imm16_class  : imm16_class_t;
@@ -151,6 +152,7 @@ begin
     instruction  => instr_s1,     -- in  unsigned(31 downto 0);
     -- decode results are available on the next clock after start
     r_type       => r_type,       -- out boolean;
+    jump_class   => jump_class,   -- out jump_class_t;
     instr_class  => instr_class , -- out instr_class_t;
     is_br        => is_br,        -- out boolean;  -- unconditional branch
     srcreg_class => srcreg_class, -- out src_reg_class_t;
@@ -204,9 +206,8 @@ begin
     clk           => clk,                                   -- in  std_logic;
     s_reset       => s_reset,                               -- in  boolean; -- synchronous reset
     calc_nextpc   => PH_Decode,                             -- in  boolean;
-    incremet_addr => PH_Regfile1,                           -- in  boolean;
-    indirect_jump => PH_Regfile1 and instr_class=INSTR_CLASS_INDIRECT_JUMP, -- in  boolean;
-    direct_jump   => PH_Regfile1 and instr_class=INSTR_CLASS_DIRECT_JUMP,   -- in  boolean;
+    update_addr   => PH_Regfile1,                           -- in  boolean;
+    jump_class    => jump_class,                            -- in  jump_class_t;
     branch        => PH_Branch,                             -- in  boolean;
     branch_taken  => cmp_result or is_br,                   -- in  boolean;
     imm26         => instr_imm26,                           -- in  unsigned(25 downto 0);
@@ -250,10 +251,9 @@ begin
         PH_Regfile1 <= PH_Decode;
 
         if PH_Regfile1 then
-          if instr_class=INSTR_CLASS_DIRECT_JUMP then
-            PH_Fetch <= true; -- last execution stage of direct jumps
-          elsif instr_class=INSTR_CLASS_INDIRECT_JUMP then
-            PH_Fetch <= true; -- last execution stage of indirect jumps
+
+          if jump_class/=JUMP_CLASS_OTHERS then
+            PH_Fetch <= true; -- last execution stage of direct and inderect jumps
           elsif is_br then
             PH_Fetch <= true; -- last execution stage of unconditional branch
             PH_Branch <= true;
