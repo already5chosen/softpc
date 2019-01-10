@@ -450,10 +450,12 @@ begin
 
         when OPX_CMPLTU =>
           srcreg_class <= SRC_REG_CLASS_AB;
+          writeback_ex <= true;
           alu_op       <= ALU_OP_CMPLTU;
 
         when OPX_ADD    =>
           srcreg_class <= SRC_REG_CLASS_AB;
+          writeback_ex <= true;
           alu_op       <= ALU_OP_ADD;
 
         when OPX_BREAK  =>
@@ -464,15 +466,18 @@ begin
 
         when OPX_SUB    =>
           srcreg_class <= SRC_REG_CLASS_AB;
+          writeback_ex <= true;
           alu_op       <= ALU_OP_SUB;
 
         when OPX_SRAI   =>
           instr_class  <= INSTR_CLASS_SHIFT;
           srcreg_class <= SRC_REG_CLASS_A;
+          writeback_ex <= true;
 
         when OPX_SRA    =>
           instr_class  <= INSTR_CLASS_SHIFT;
           srcreg_class <= SRC_REG_CLASS_AB;
+          writeback_ex <= true;
 
         when others =>
           null;

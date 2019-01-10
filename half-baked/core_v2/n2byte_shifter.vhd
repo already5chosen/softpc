@@ -8,7 +8,7 @@ entity n2byte_shifter is
   op_align : in  unsigned(1 downto 0); -- '00' - shift/rotate, '10' - 16-bit align, '11' - 8-bit align
   op_shift : in  std_logic; -- '0' - rotate,      '1' - shift
   op_left  : in  std_logic; -- '0' - shift right, '1' - shift left
-  op_arith : in  std_logic; -- '0' - arithmetic,  '1' - logical (applicable when op_shift='1' and op_left='0')
+  op_arith : in  std_logic; -- '0' - logical,     '1' - arithmetic (applicable when op_shift='1' and op_left='0')
   a        : in  unsigned(DATA_WIDTH-1 downto 0);
   rshift   : in  unsigned(B_WIDTH-1    downto 3);
   b_lsbits : in  boolean;   -- (b % 8) /= 0, to restore original b for use by left shifts

@@ -9,7 +9,7 @@ entity n2bit_shifter is
  port (
   op_shift      : in std_logic; -- '0' - rotate,      '1' - shift
   op_left       : in std_logic; -- '0' - shift right, '1' - shift left
-  op_arith      : in std_logic; -- '0' - arithmetic,  '1' - logical (applicable when op_shift='1' and op_left='0')
+  op_arith      : in std_logic; -- '0' - logical,     '1' - arithmetic (applicable when op_shift='1' and op_left='0')
   a             : in  unsigned(DATA_WIDTH-1 downto 0);
   b             : in  unsigned(B_WIDTH-1    downto 0);
   result        : out unsigned(DATA_WIDTH-1 downto 0); -- output shifted by (b % 8)
