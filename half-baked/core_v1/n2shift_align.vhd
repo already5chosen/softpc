@@ -54,7 +54,7 @@ begin
           when others   => bysh_op_align <= "00";
         end case;
         sh_op_shift   <= '0';
-        sh_op_arith   <= ld_op_u(MEM_OP_BIT_UNS);
+        sh_op_arith   <= not ld_op_u(MEM_OP_BIT_UNS);
         bysh_b_lsbits <= false;
         bysh_op_left  <= '0';
       else
@@ -86,7 +86,7 @@ begin
    port map (
     op_shift      => sh_op_shift,   -- in std_logic; -- '0' - rotate,      '1' - shift
     op_left       => sh_op_left ,   -- in std_logic; -- '0' - shift right, '1' - shift left
-    op_arith      => sh_op_arith,   -- in std_logic; -- '0' - arithmetic,  '1' - logical (applicable when op_shift='1' and op_left='0')
+    op_arith      => sh_op_arith,   -- in std_logic; -- '0' - logical,     '1' - arithmetic (applicable when op_shift='1' and op_left='0')
     a             => a,             -- in  unsigned(DATA_WIDTH-1 downto 0);
     b             => b,             -- in  unsigned(B_WIDTH-1    downto 0);
     byte_rshift   => byte_rshift  , -- out unsigned(B_WIDTH-4 downto 0);    -- right shift signal for n2byte_shifter
@@ -102,7 +102,7 @@ begin
     op_align => bysh_op_align, -- in  unsigned(1 downto 0); -- '00' - shift/rotate, '10' - 16-bit align, '11' - 8-bit align
     op_shift => sh_op_shift  , -- in  std_logic; -- '0' - rotate,      '1' - shift
     op_left  => bysh_op_left , -- in  std_logic; -- '0' - shift right, '1' - shift left
-    op_arith => sh_op_arith  , -- in  std_logic; -- '0' - arithmetic,  '1' - logical (applicable when op_shift='1' and op_left='0')
+    op_arith => sh_op_arith  , -- in  std_logic; -- '0' - logical,     '1' - arithmetic (applicable when op_shift='1' and op_left='0')
     a        => bysh_a       , -- in  unsigned(DATA_WIDTH-1 downto 0);
     rshift   => bysh_rshift  , -- in  unsigned(B_WIDTH-1    downto 3);
     b_lsbits => bysh_b_lsbits, -- in  boolean;   -- (b % 8) /= 0, to restore original b for use by left shifts
