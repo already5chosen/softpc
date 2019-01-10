@@ -9,9 +9,7 @@ entity n2register_file is
   wraddr      : in  natural range 0 to 31;
   nextpc      : in  unsigned(31 downto 2);
   wrnextpc    : in  boolean;
-  wrdata0     : in  unsigned(31 downto 0);
-  wrdata1     : in  unsigned(31 downto 0);
-  wrdata_sel0 : in  boolean;
+  wrdata_exu  : in  unsigned(31 downto 0);
   dstreg_wren : in  boolean;
   -- read result q available on the next clock after rdaddr
   q : out unsigned(31 downto 0)
@@ -35,11 +33,7 @@ begin
 
       -- write
       wren := dstreg_wren and (wraddr/=0);
-      if wrdata_sel0 then
-        wrdata := wrdata0;
-      else
-        wrdata := wrdata1;
-      end if;
+      wrdata := wrdata_exu;
 
       if wrnextpc then
         wren := true;

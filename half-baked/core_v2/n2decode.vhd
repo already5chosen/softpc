@@ -16,7 +16,8 @@ entity n2decode is
   imm16_class  : out imm16_class_t;
   shifter_op   : out natural range 0 to 7;  -- shift/rotate unit internal opcode
   mem_op       : out natural range 0 to 15; -- memory(LSU) unit internal opcode
-  alu_op       : out natural range 0 to 15  -- ALU unit internal opcode
+  alu_op       : out natural range 0 to 15; -- ALU unit internal opcode
+  dst_reg_i    : out natural range 0 to 31
  );
 end entity n2decode;
 
@@ -29,11 +30,11 @@ architecture a of n2decode is
   -- instruction fields
   alias op    : unsigned(5  downto 0) is instruction( 5 downto  0);
   -- alias imm16 : unsigned(15 downto 0) is instruction(21 downto  6); -- I-type
-  -- alias b     : unsigned(4  downto 0) is instruction(26 downto 22); -- I-type and R-type
+  alias b     : unsigned(4  downto 0) is instruction(26 downto 22); -- I-type and R-type
   -- alias a     : unsigned(4  downto 0) is instruction(31 downto 27); -- I-type and R-type
   -- alias imm5  : unsigned(4  downto 0) is instruction(10 downto  6); -- R-type
   alias opx   : unsigned(5  downto 0) is instruction(16 downto 11); -- R-type
-  -- alias c     : unsigned(4  downto 0) is instruction(21 downto 17); -- R-type
+  alias c     : unsigned(4  downto 0) is instruction(21 downto 17); -- R-type
   -- alias imm26 : unsigned(25 downto 0) is instruction(31 downto  6); -- J-type
 
 begin
@@ -50,11 +51,13 @@ begin
     r_type       <= op=OP_RTYPE;
     is_call      <= false;
     is_next_pc   <= false;
+    dst_reg_i    <= to_integer(b);
 
     case to_integer(op) is
       when OP_CALL =>
         instr_class  <= INSTR_CLASS_DIRECT_JUMP;
         is_call      <= true;
+        dst_reg_i    <= 31;
 
       when OP_JMPI =>
         instr_class  <= INSTR_CLASS_DIRECT_JUMP;
@@ -301,6 +304,7 @@ begin
     end case;
 
     if op=OP_RTYPE then
+      dst_reg_i <= to_integer(c);
       -- R-TYPE
       case to_integer(opx) is
         when OPX_ERET   =>
