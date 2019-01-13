@@ -1,6 +1,11 @@
-Variant 1.
-Build for simplicity. I don't expect it to have practically useful ratio between resources and performance.
-The only thing that it will likely be good is a clock rate.
+Variant 2.
+Execution phases identical to variant 1, but implementation is different.
+Variant 1 uses intermediate registers in order to meet timing.
+Variant 2 uses fewer registers and tries to meet timing by means of specifying multicycle paths.
+
+It turned out that Quartus integrated synthesis and fitter poorly suited for such style of design.
+Variant 2 ended up both significantly bigger and very significantly slower than variant 1.
+At least, I learned something.
 
 The core is build around full-speed 32-bit ALU and shifter, but features almost no concurrency between pipeline stages.
 

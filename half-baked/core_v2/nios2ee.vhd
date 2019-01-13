@@ -97,7 +97,7 @@ architecture a of nios2ee is
   -- alias instr_c     : unsigned(4  downto 0) is instr_s1(21 downto 17); -- R-type
   alias instr_imm26 : unsigned(25 downto 0) is instr_s1(31 downto  6); -- J-type
 
-  signal writeback_ex, is_call, is_next_pc, is_br, is_br_reg : boolean;
+  signal writeback_ex, is_call, is_next_pc, is_br, is_br_reg, is_call_reg, is_next_pc_reg : boolean;
   signal jump_class   : jump_class_t;
   signal instr_class  : instr_class_t;
   signal is_srcreg_b, is_b_zero, is_srcreg_b_reg, to_PH_Regfile2 : boolean;
@@ -111,6 +111,7 @@ architecture a of nios2ee is
 
 
   signal alu_result    : u32; -- ALU/AGU result
+  --signal agu_result    : u32; -- AGU result
   signal sh_result     : u32; -- shifter result
   signal alu_sh_result : u32; -- combined ALU/shifter result
   signal ld_result     : u32; -- load result
@@ -126,7 +127,7 @@ architecture a of nios2ee is
   alias rf_readdata_b : unsigned(7 downto 0)  is rf_readdata(7 downto 0);
 
   -- memory access signals
-  signal is_tcm, is_tcm_reg : boolean;
+  signal is_tcm, is_tcm_reg, is_load, is_store : boolean;
   -- store data
   signal writedata_mux, dm_readdata : unsigned(31 downto 0);
   signal writedata  : std_logic_vector(31 downto 0);
@@ -134,6 +135,7 @@ architecture a of nios2ee is
   signal dm_address : std_logic_vector(CPU_ADDR_WIDTH-1 downto 0); -- 8-bit bytes
   signal dm_write   : std_logic;
   alias  readdata_bi : unsigned(1 downto 0) is alu_sh_result(1 downto 0); -- byte index of LS byte of load result in dm_readdata
+  -- alias  readdata_bi : unsigned(1 downto 0) is agu_result(1 downto 0); -- byte index of LS byte of load result in dm_readdata
 
   signal uu_u32  : u32;
   signal uu_bool : boolean;
@@ -225,9 +227,12 @@ begin
       dstreg_wren <= false;
       ld_wren     <= false;
       is_srcreg_b_reg <= is_srcreg_b;
+      is_call_reg     <= is_call;
+      is_next_pc_reg  <= is_next_pc;
       is_b_zero <= (instr_b = 0);
-      rf_wrnextpc <= false;
       is_br_reg   <= false;
+      is_load     <= false;
+      is_store    <= false;
 
       PH_Fetch        <= false;
       PH_Decode       <= false;
@@ -258,7 +263,6 @@ begin
 
         if PH_Decode then
           PH_Regfile1 <= true;
-          rf_wrnextpc <= is_call;
         end if;
 
         if PH_Regfile1 then
@@ -274,7 +278,6 @@ begin
           else
             PH_Execute  <= true;
           end if;
-          rf_wrnextpc <= is_next_pc;
         end if;
 
         if PH_Regfile2 then
@@ -283,16 +286,13 @@ begin
 
         if PH_Execute then
           dstreg_wren <= writeback_ex;
-          -- writedata <= std_logic_vector(writedata_mux);
-          if instr_class=INSTR_CLASS_MEMORY then
-            if mem_op_u(MEM_OP_BIT_STORE)='1' then
-              dm_write <= '1';
-              PH_Fetch <= true;
-            else
-              PH_Load_Address <= true;
-            end if;
+          if is_load then
+            PH_Load_Address <= true;
           else
             PH_Fetch <= true;
+            if is_store then
+              dm_write <= '1';
+            end if;
             if instr_class=INSTR_CLASS_BRANCH then
               PH_Branch <= true;
             end if;
@@ -326,6 +326,8 @@ begin
 
       if PH_Regfile1 then
         lsu_op_reg <= mem_op_i mod 8;
+        is_load    <= instr_class=INSTR_CLASS_MEMORY and mem_op_u(MEM_OP_BIT_STORE)='0';
+        is_store   <= instr_class=INSTR_CLASS_MEMORY and mem_op_u(MEM_OP_BIT_STORE)='1';
       end if;
 
     end if;
@@ -341,6 +343,7 @@ begin
 
       -- alu/shifter result mux
       if PH_Execute then
+        -- agu_result <= rf_readdata + unsigned(resize(signed(instr_imm16), 32));
         if instr_class=INSTR_CLASS_ALU then
           alu_sh_result <= alu_result;
         else
@@ -420,12 +423,7 @@ begin
   rf_rdaddr <= to_integer(instr_a) when PH_Decode else to_integer(instr_b);
   rf_wraddr <= dst_reg_i;
   rf_wrdata_exu <= ld_result when ld_wren else alu_sh_result;
-  -- process (clk)
-  -- begin
-    -- if rising_edge(clk) then
-      -- uu_u32(31 downto 2) <= nextpc;
-    -- end if;
-  -- end process;
+  rf_wrnextpc <= (is_call_reg or is_next_pc_reg) and PH_Regfile1;
   rf:entity work.n2register_file
    port map (
     clk         => clk,            -- in  std_logic;
@@ -447,6 +445,7 @@ begin
     variable bi : natural range 0 to 3;
   begin
     addr := alu_sh_result;
+    -- addr := agu_result;
     bi := to_integer(readdata_bi);
     byteenable <= (others => '0');
     case lsu_op_reg mod 4 is

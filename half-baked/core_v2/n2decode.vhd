@@ -45,7 +45,6 @@ begin
 
     jump_class   <= JUMP_CLASS_OTHERS;
     instr_class  <= INSTR_CLASS_ALU;
-    is_srcreg_b  <= false;
     imm16_class  <= IMM16_CLASS_z16;
     writeback_ex <= false;
     alu_op       <= ALU_OP_ADD;
@@ -55,6 +54,7 @@ begin
     is_next_pc   <= false;
     dst_reg_i    <= to_integer(b);
 
+    is_srcreg_b <= (op mod 4) = 2;
     case to_integer(op) is
       when OP_CALL =>
         jump_class   <= JUMP_CLASS_DIRECT;
@@ -110,7 +110,6 @@ begin
 
       when OP_BGE   =>
         instr_class  <= INSTR_CLASS_BRANCH;
-        is_srcreg_b  <= true;
         imm16_class  <= IMM16_CLASS_s16;
         alu_op       <= ALU_OP_CMPGE;
 
@@ -138,7 +137,6 @@ begin
 
       when OP_BLT     =>
         instr_class  <= INSTR_CLASS_BRANCH;
-        is_srcreg_b  <= true;
         imm16_class  <= IMM16_CLASS_s16;
         alu_op       <= ALU_OP_CMPLT;
 
@@ -161,7 +159,6 @@ begin
 
       when OP_BNE     =>
         instr_class  <= INSTR_CLASS_BRANCH;
-        is_srcreg_b  <= true;
         imm16_class  <= IMM16_CLASS_s16;
         alu_op       <= ALU_OP_CMPNE;
 
@@ -185,7 +182,6 @@ begin
 
       when OP_BEQ     =>
         instr_class  <= INSTR_CLASS_BRANCH;
-        is_srcreg_b  <= true;
         imm16_class  <= IMM16_CLASS_s16;
         alu_op       <= ALU_OP_CMPEQ;
 
@@ -215,7 +211,6 @@ begin
 
       when OP_BGEU    =>
         instr_class  <= INSTR_CLASS_BRANCH;
-        is_srcreg_b  <= true;
         imm16_class  <= IMM16_CLASS_s16;
         alu_op       <= ALU_OP_CMPGEU;
 
@@ -246,7 +241,6 @@ begin
 
       when OP_BLTU    =>
         instr_class  <= INSTR_CLASS_BRANCH;
-        is_srcreg_b  <= true;
         imm16_class  <= IMM16_CLASS_s16;
         alu_op       <= ALU_OP_CMPLTU;
 
