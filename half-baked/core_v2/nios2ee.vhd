@@ -84,6 +84,7 @@ architecture a of nios2ee is
 
   subtype u32 is unsigned(31 downto 0);
   signal pc, nextpc : unsigned(31 downto 2);
+  signal iu_update_addr : boolean;
 
   alias instr_s1 : u32 is tcm_readdata;
   -- instruction decode signals
@@ -96,28 +97,30 @@ architecture a of nios2ee is
   -- alias instr_c     : unsigned(4  downto 0) is instr_s1(21 downto 17); -- R-type
   alias instr_imm26 : unsigned(25 downto 0) is instr_s1(31 downto  6); -- J-type
 
-  signal writeback_ex, is_call, is_next_pc, is_br : boolean;
+  signal writeback_ex, is_call, is_next_pc, is_br, is_br_reg : boolean;
+  signal jump_class   : jump_class_t;
   signal instr_class  : instr_class_t;
-  signal srcreg_class : src_reg_class_t;
+  signal is_srcreg_b, is_b_zero, is_srcreg_b_reg, to_PH_Regfile2 : boolean;
   signal imm16_class  : imm16_class_t;
   signal alu_op, mem_op_i : natural range 0 to 15; -- ALU and memory(LSU) unit internal opcode
   signal shifter_op : natural range 0 to 7;  -- shift/rotate unit internal opcode
   signal mem_op_u : unsigned(3 downto 0);  -- unsigned representation of mem_op_i
   signal lsu_op_reg : natural range 0 to 7;  -- 3 LS bits of mem_op_i (registered)
-  signal reg_a, src_b : u32;
+  signal reg_a, src_a, src_b : u32;
+  signal src_sel_ab : boolean;
 
-  -- ALU/AGU
-  signal alu_result : u32;
-  -- shifter
-  signal sh_result : u32;
-  -- combined ALU/shifter result
-  signal alu_sh_result : u32;
+
+  signal alu_result    : u32; -- ALU/AGU result
+  signal sh_result     : u32; -- shifter result
+  signal alu_sh_result : u32; -- combined ALU/shifter result
+  signal ld_result     : u32; -- load result
+  signal rf_wrdata_exu : u32; -- combined ALU/shifter/load result
 
   -- register file access
   signal rf_wrnextpc : boolean;
   signal rf_readdata : u32;
   signal rf_wraddr, rf_rdaddr, dst_reg_i : natural range 0 to 31;
-  signal dstreg_wren : boolean;
+  signal dstreg_wren, ld_wren, rf_read_en : boolean;
 
   alias rf_readdata_h : unsigned(15 downto 0) is rf_readdata(15 downto 0);
   alias rf_readdata_b : unsigned(7 downto 0)  is rf_readdata(7 downto 0);
@@ -130,8 +133,10 @@ architecture a of nios2ee is
   signal byteenable : std_logic_vector(3 downto 0);
   signal dm_address : std_logic_vector(CPU_ADDR_WIDTH-1 downto 0); -- 8-bit bytes
   signal dm_write   : std_logic;
-  signal readdata_bi, readdata_bi_reg : natural range 0 to 3; -- byte index of LS byte of load result in dm_readdata
+  alias  readdata_bi : unsigned(1 downto 0) is alu_sh_result(1 downto 0); -- byte index of LS byte of load result in dm_readdata
 
+  signal uu_u32  : u32;
+  signal uu_bool : boolean;
 begin
 
   process (clk, reset)
@@ -148,9 +153,10 @@ begin
    port map (
     instruction  => instr_s1,     -- in  unsigned(31 downto 0);
     r_type       => open,         -- out boolean;
+    jump_class   => jump_class,   -- out jump_class_t;
     instr_class  => instr_class , -- out instr_class_t;
     is_br        => is_br,        -- out boolean;  -- unconditional branch
-    srcreg_class => srcreg_class, -- out src_reg_class_t;
+    is_srcreg_b  => is_srcreg_b,  -- out boolean;  -- true when r[B] is source for ALU, Branch or shift operation, but not for stores
     writeback_ex => writeback_ex, -- out boolean; -- true when destination register is updated with result of PH_execute stage
     is_call      => is_call,      -- out boolean;
     is_next_pc   => is_next_pc,   -- out boolean;
@@ -167,59 +173,68 @@ begin
    generic map (DATA_WIDTH => 32)
    port map (
     op         => alu_op    , -- in  natural range 0 to 15;
-    a          => reg_a     , -- in  unsigned(DATA_WIDTH-1 downto 0);
+    a          => src_a     , -- in  unsigned(DATA_WIDTH-1 downto 0);
     b          => src_b     , -- in  unsigned(DATA_WIDTH-1 downto 0);
     result     => alu_result, -- out unsigned(DATA_WIDTH-1 downto 0)
     agu_result => open,       -- out unsigned(DATA_WIDTH-1 downto 0)
     cmp_result => open        -- buffer boolean -- for branches
    );
 
-  -- shifter/Load alignment
-  sha:entity work.n2shift_align
+  -- Shifter
+  sha:entity work.n2shifter
    port map (
-    is_memory     => PH_Load_Data, -- in  boolean;
-    -- shift/rotate inputs
-    sh_op_i       => shifter_op,                  -- in  natural range 0 to 7; -- shift/rotate unit internal opcode
-    a             => reg_a,                       -- in  unsigned;
-    b             => src_b(4 downto 0),           -- in  unsigned;
+    op     => shifter_op,        -- in  natural range 0 to 7; -- shift/rotate unit internal opcode
+    a      => src_a,             -- in  unsigned;
+    b      => src_b(4 downto 0), -- in  unsigned;
+    result => sh_result          -- out unsigned
+   );
+
+  -- Load alignment
+  lda:entity work.n2aligner
+   port map (
     -- align/sign-extend load data inputs
-    ld_op_i       => lsu_op_reg,                  -- in  natural range 0 to 7; -- memory(LSU) unit internal opcode
-    readdata      => dm_readdata,                 -- in  unsigned;
-    readdata_bi   => to_unsigned(readdata_bi_reg, 2), -- in  unsigned; -- byte index of LS byte of load result in dm_readdata
-    -- result
-    result        => sh_result    -- out unsigned
+    ld_op  => lsu_op_reg,  -- in  natural range 0 to 7; -- memory(LSU) unit internal opcode
+    a      => dm_readdata, -- in  unsigned(31 downto 0);
+    bi     => readdata_bi, -- in  unsigned(1  downto 0); -- byte index of LS byte of load result in a
+    result => ld_result    -- out unsigned
    );
 
   -- program counter/jumps/branches
+  iu_update_addr <= PH_Execute or (PH_Regfile1 and (jump_class /= JUMP_CLASS_OTHERS or is_br));
   iu:entity work.n2program_counter
    generic map (RESET_ADDR => RESET_ADDR)
    port map (
     clk           => clk,                                   -- in  std_logic;
     s_reset       => s_reset,                               -- in  boolean; -- synchronous reset
     calc_nextpc   => PH_Decode,                             -- in  boolean;
-    incremet_addr => PH_Regfile1,                           -- in  boolean;
-    indirect_jump => PH_Regfile1 and instr_class=INSTR_CLASS_INDIRECT_JUMP, -- in  boolean;
-    direct_jump   => PH_Regfile1 and instr_class=INSTR_CLASS_DIRECT_JUMP,   -- in  boolean;
+    update_addr   => iu_update_addr,                        -- in  boolean;
+    jump_class    => jump_class,                            -- in  jump_class_t;
     branch        => PH_Branch,                             -- in  boolean;
-    branch_taken  => alu_sh_result(0)='1' or is_br,         -- in  boolean;
+    branch_taken  => alu_sh_result(0)='1' or is_br_reg,     -- in  boolean;
     imm26         => instr_imm26,                           -- in  unsigned(25 downto 0);
     reg_a         => rf_readdata,                           -- in  unsigned(31 downto 0);
     addr          => pc,                                    -- out unsigned(31 downto 2)
     nextpc        => nextpc                                 -- out unsigned(31 downto 2)
    );
 
+  to_PH_Regfile2 <= is_srcreg_b_reg and not is_b_zero;
   process (clk)
   begin
     if rising_edge(clk) then
       dm_write <= '0';
       dstreg_wren <= false;
+      ld_wren     <= false;
+      is_srcreg_b_reg <= is_srcreg_b;
+      is_b_zero <= (instr_b = 0);
+      rf_wrnextpc <= false;
+      is_br_reg   <= false;
 
-      PH_Fetch          <= false;
-      PH_Decode         <= false;
-      PH_Regfile1       <= false;
-      PH_Regfile2       <= false;
-      PH_Execute        <= false;
-      PH_Branch         <= false;
+      PH_Fetch        <= false;
+      PH_Decode       <= false;
+      PH_Regfile1     <= false;
+      PH_Regfile2     <= false;
+      PH_Execute      <= false;
+      PH_Branch       <= false;
       PH_Load_Address <= false;
       PH_Load_Data    <= false;
 
@@ -238,23 +253,28 @@ begin
           else
             PH_Decode <= true;
           end if;
+          src_sel_ab <= false;
         end if;
 
-        PH_Regfile1 <= PH_Decode;
+        if PH_Decode then
+          PH_Regfile1 <= true;
+          rf_wrnextpc <= is_call;
+        end if;
 
         if PH_Regfile1 then
-          if instr_class=INSTR_CLASS_DIRECT_JUMP then
-            PH_Fetch <= true; -- last execution stage of direct jumps
-          elsif instr_class=INSTR_CLASS_INDIRECT_JUMP then
-            PH_Fetch <= true; -- last execution stage of indirect jumps
+          if jump_class/=JUMP_CLASS_OTHERS then
+            PH_Fetch  <= true; -- last execution stage of direct and inderect jumps
           elsif is_br then
-            PH_Fetch <= true; -- last execution stage of unconditional branch
+            PH_Fetch  <= true; -- last execution stage of unconditional branch
             PH_Branch <= true;
-          elsif srcreg_class=SRC_REG_CLASS_AB and instr_b/=0 then
+            is_br_reg <= true;
+          elsif to_PH_Regfile2 then
             PH_Regfile2 <= true;
+            src_sel_ab <= true;
           else
             PH_Execute  <= true;
           end if;
+          rf_wrnextpc <= is_next_pc;
         end if;
 
         if PH_Regfile2 then
@@ -263,7 +283,7 @@ begin
 
         if PH_Execute then
           dstreg_wren <= writeback_ex;
-          writedata <= std_logic_vector(writedata_mux);
+          -- writedata <= std_logic_vector(writedata_mux);
           if instr_class=INSTR_CLASS_MEMORY then
             if mem_op_u(MEM_OP_BIT_STORE)='1' then
               dm_write <= '1';
@@ -285,7 +305,6 @@ begin
 
         if PH_Load_Address then
           is_tcm_reg <= is_tcm;
-          readdata_bi_reg <= readdata_bi;
           PH_Load_Address <= true;
           if is_tcm or avm_waitrequest='0' then
             PH_Load_Address <= false;
@@ -295,6 +314,7 @@ begin
         end if;
 
         if PH_Load_Data then
+          ld_wren <= true;
           if is_tcm_reg or avm_readdatavalid='1' then
             dstreg_wren <= true;
             PH_Fetch <= true;
@@ -304,7 +324,7 @@ begin
         end if;
       end if;
 
-      if PH_Decode then
+      if PH_Regfile1 then
         lsu_op_reg <= mem_op_i mod 8;
       end if;
 
@@ -327,15 +347,9 @@ begin
           alu_sh_result <= sh_result;
         end if;
       end if;
-
-      if PH_Load_Data then
-        alu_sh_result <= sh_result;
-      end if;
-
     end if;
   end process;
 
-  -- 2nd source operand mux
   process (all)
     constant sel_imm : natural := 0;
     constant sel_rf  : natural := 1;
@@ -347,8 +361,16 @@ begin
     variable h_sel : h_sel_t;
   begin
 
-    if srcreg_class=SRC_REG_CLASS_AB then
-      if instr_b/=0 then
+    -- 1st source operand mux
+    if src_sel_ab then
+      src_a <= reg_a;
+    else
+      src_a <= rf_readdata;
+    end if;
+
+    -- 2nd source operand mux
+    if is_srcreg_b_reg then
+      if is_b_zero then
         l_sel := sel_0;
         h_sel := sel_0;
       else
@@ -381,17 +403,38 @@ begin
     end case;
   end process;
 
+  -- RF read sequence when register B is not a source
+  -- phase       Decode Regfile1 Execute Store
+  -- read_en     1      0        1       x
+  -- rdaddr      A      B        B       x
+  -- q           x      reg_a    reg_a   reg_b
+  -- src_sel_ab  0      0        0       0
+  --
+  -- RF read sequence when register B is source
+  -- phase       Decode Regfile1 Regfile2 Execute
+  -- read_en     1      1        0        1
+  -- rdaddr      A      B        B        B
+  -- q           x      reg_a    reg_b   reg_b
+  -- src_sel_ab  0      0        1        1
+  rf_read_en <= PH_Decode or PH_Execute or (PH_Regfile1 and to_PH_Regfile2);
   rf_rdaddr <= to_integer(instr_a) when PH_Decode else to_integer(instr_b);
-  rf_wrnextpc <= is_call or is_next_pc;
   rf_wraddr <= dst_reg_i;
+  rf_wrdata_exu <= ld_result when ld_wren else alu_sh_result;
+  -- process (clk)
+  -- begin
+    -- if rising_edge(clk) then
+      -- uu_u32(31 downto 2) <= nextpc;
+    -- end if;
+  -- end process;
   rf:entity work.n2register_file
    port map (
     clk         => clk,            -- in  std_logic;
+    read_en     => rf_read_en,     -- in  boolean;
     rdaddr      => rf_rdaddr,      -- in  natural range 0 to 31;
     wraddr      => rf_wraddr,      -- in  natural range 0 to 31;
     nextpc      => nextpc,         -- in  unsigned(31 downto 2);
     wrnextpc    => rf_wrnextpc,    -- in  boolean;
-    wrdata_exu  => alu_sh_result,  -- in  unsigned(31 downto 0);
+    wrdata_exu  => rf_wrdata_exu,  -- in  unsigned(31 downto 0);
     dstreg_wren => dstreg_wren,    -- in  boolean;
     -- read result q available on the next clock after rdaddr
     q => rf_readdata -- out unsigned(31 downto 0)
@@ -404,24 +447,21 @@ begin
     variable bi : natural range 0 to 3;
   begin
     addr := alu_sh_result;
-    bi := to_integer(addr) mod 4;
+    bi := to_integer(readdata_bi);
     byteenable <= (others => '0');
     case lsu_op_reg mod 4 is
       when MEM_OP_B =>
         byteenable(bi) <= '1';
         writedata_mux <= rf_readdata_b & rf_readdata_b & rf_readdata_b & rf_readdata_b;
-        readdata_bi <= bi;
 
       when MEM_OP_H =>
         byteenable((bi/2)*2+0) <= '1';
         byteenable((bi/2)*2+1) <= '1';
         writedata_mux <= rf_readdata_h & rf_readdata_h;
-        readdata_bi <= (bi/2)*2;
 
       when others =>
         byteenable <= (others => '1');
         writedata_mux <= rf_readdata;
-        readdata_bi <= 0;
     end case;
 
     dm_address(CPU_ADDR_WIDTH-1 downto 2) <= std_logic_vector(addr(CPU_ADDR_WIDTH-1 downto 2));
@@ -440,10 +480,21 @@ begin
 
   avm_address    <= dm_address;
   avm_byteenable <= byteenable;
+  writedata      <= std_logic_vector(writedata_mux);
   avm_writedata  <= writedata;
   avm_write      <= dm_write when not is_tcm else '0';
   avm_read       <= '1' when PH_Load_Address and not is_tcm else '0';
 
-  dm_readdata <= tcm_readdata when is_tcm_reg else avm_readdata;
+  process (clk)
+  begin
+    if rising_edge(clk) then
+      -- if PH_Load_Address and not is_tcm then avm_read <= '1'; else avm_read <= '0'; end if;
+      if is_tcm_reg then
+        dm_readdata <= tcm_readdata;
+      else
+        dm_readdata <= avm_readdata;
+      end if;
+    end if;
+  end process;
 
 end architecture a;

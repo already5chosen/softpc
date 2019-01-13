@@ -5,6 +5,7 @@ use ieee.numeric_std.all;
 entity n2register_file is
  port (
   clk         : in  std_logic;
+  read_en     : in  boolean;
   rdaddr      : in  natural range 0 to 31;
   wraddr      : in  natural range 0 to 31;
   nextpc      : in  unsigned(31 downto 2);
@@ -29,7 +30,9 @@ begin
   begin
     if rising_edge(clk) then
       -- read
-      q <= rf(rdaddr);
+      if read_en then
+        q <= rf(rdaddr);
+      end if;
 
       -- write
       wren := dstreg_wren and (wraddr/=0);
