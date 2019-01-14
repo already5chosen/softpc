@@ -97,10 +97,9 @@ architecture a of nios2ee is
   alias instr_c     : unsigned(4  downto 0) is instr_s2(21 downto 17); -- R-type
   alias instr_imm26 : unsigned(25 downto 0) is instr_s2(31 downto  6); -- J-type
 
-  signal r_type, writeback_ex, is_call, is_next_pc, is_br : boolean;
+  signal r_type, writeback_ex, is_call, is_next_pc, is_br, is_b_zero, is_srcreg_b : boolean;
   signal jump_class   : jump_class_t;
   signal instr_class  : instr_class_t;
-  signal srcreg_class : src_reg_class_t;
   signal imm16_class  : imm16_class_t;
   signal alu_op, mem_op_i : natural range 0 to 15; -- ALU and memory(LSU) unit internal opcode
   signal shifter_op : natural range 0 to 7;  -- shift/rotate unit internal opcode
@@ -154,8 +153,9 @@ begin
     r_type       => r_type,       -- out boolean;
     jump_class   => jump_class,   -- out jump_class_t;
     instr_class  => instr_class , -- out instr_class_t;
+    is_srcreg_b  => is_srcreg_b,  -- out boolean;  -- true when r[B] is source for ALU, Branch or shift operation, but not for stores
+    is_b_zero    => is_b_zero,    -- out boolean;
     is_br        => is_br,        -- out boolean;  -- unconditional branch
-    srcreg_class => srcreg_class, -- out src_reg_class_t;
     writeback_ex => writeback_ex, -- out boolean; -- true when destination register is updated with result of PH_execute stage
     is_call      => is_call,      -- out boolean;
     is_next_pc   => is_next_pc,   -- out boolean;
@@ -257,7 +257,7 @@ begin
           elsif is_br then
             PH_Fetch <= true; -- last execution stage of unconditional branch
             PH_Branch <= true;
-          elsif srcreg_class=SRC_REG_CLASS_AB and instr_b/=0 then
+          elsif is_srcreg_b and not is_b_zero then
             PH_Regfile2 <= true;
           else
             PH_Execute  <= true;
@@ -349,7 +349,7 @@ begin
     if rising_edge(clk) then
       if PH_Regfile1 then
         -- type-I instructions except branches or shifts by immediate - the second source operand is immediate
-        if srcreg_class=SRC_REG_CLASS_AB then
+        if is_srcreg_b then
            l_sel := sel_0;
            h_sel := sel_0;
         elsif imm16_class = IMM16_CLASS_h16 then
