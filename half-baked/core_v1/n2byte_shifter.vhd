@@ -11,6 +11,7 @@ entity n2byte_shifter is
   op_arith : in  std_logic; -- '0' - logical,     '1' - arithmetic (applicable when op_shift='1' and op_left='0')
   a        : in  unsigned(DATA_WIDTH-1 downto 0);
   rshift   : in  unsigned(B_WIDTH-1    downto 3);
+  sign_pos : in  unsigned(B_WIDTH-1    downto 3);
   b_lsbits : in  boolean;   -- (b % 8) /= 0, to restore original b for use by left shifts
   result   : out unsigned(DATA_WIDTH-1 downto 0)
  );
@@ -32,12 +33,7 @@ begin
   begin
     eff_op_arith <= '0';
     if op_arith='1' then
-      eff_op_arith <= a(a'high);
-      if op_align(0)='1' then
-        eff_op_arith <= a(to_integer(rshift)*8+7);
-      elsif op_align(1)='1' then
-        eff_op_arith <= a(to_integer(rshift)*8+15);
-      end if;
+      eff_op_arith <= a(to_integer(sign_pos)*8+7);
     end if;
 
     trellis(3) := a;

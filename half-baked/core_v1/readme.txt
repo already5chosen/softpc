@@ -58,10 +58,10 @@ TCM loads                                - 6
 AVM loads                                - 6 + wait states (waitrequest='1') + latency (readdatavalid='0')
 
 Synthesis/Fitter results with Balanced target
-Fmax (10CL006YE144C8G) : 139.0 MHz
-Fmax (10CL006YE144C6G) : 179.1 MHz
+Fmax (10CL006YE144C8G) : 144.9 MHz
+Fmax (10CL006YE144C6G) : 186.0 MHz
 
-Area (10CL006YE144C8G) : 819 LCs + 1 M9K + 0 DSPs
+Area (10CL006YE144C8G) : 831 LCs + 1 M9K + 0 DSPs
 
 
 
