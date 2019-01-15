@@ -287,10 +287,8 @@ begin
           imm16_class  <= IMM16_CLASS_s16;
           alu_op       <= ALU_OP_ADD;
 
-        when OP_RDPRS   => -- implement as ADDI, TODO
-          imm16_class  <= IMM16_CLASS_s16;
-          writeback_ex <= true;
-          alu_op       <= ALU_OP_ADD;
+        when OP_RDPRS   =>
+          null; -- not implemented
 
         when OP_RTYPE   =>
           null;
