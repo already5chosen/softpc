@@ -153,12 +153,12 @@ begin
     r_type       => r_type,       -- out boolean;
     jump_class   => jump_class,   -- out jump_class_t;
     instr_class  => instr_class , -- out instr_class_t;
-    is_srcreg_b  => is_srcreg_b,  -- out boolean;  -- true when r[B] is source for ALU, Branch or shift operation, but not for stores
+    is_srcreg_b  => is_srcreg_b,  -- out boolean; -- true when r[B] is source for ALU, Branch or shift operation, but not for stores
     is_b_zero    => is_b_zero,    -- out boolean;
-    is_br        => is_br,        -- out boolean;  -- unconditional branch
+    is_br        => is_br,        -- out boolean; -- unconditional branch
     writeback_ex => writeback_ex, -- out boolean; -- true when destination register is updated with result of PH_execute stage
-    is_call      => is_call,      -- out boolean;
-    is_next_pc   => is_next_pc,   -- out boolean;
+    is_call      => is_call,      -- out boolean; -- active for call instructions on the next clock after start
+    is_next_pc   => is_next_pc,   -- out boolean; -- active for nextpc instruction on the next clock after start
     imm16_class  => imm16_class,  -- out imm16_class_t;
     shifter_op   => shifter_op,   -- out natural range 0 to 7;  -- shift/rotate unit internal opcode
     mem_op       => mem_op_i,     -- out natural range 0 to 15; -- memory(LSU) unit internal opcode
@@ -317,16 +317,10 @@ begin
       -- register file read address
       if PH_Decode then
         instr_s2  <= instr_s1(31 downto 6);
-        rf_wraddr <= 31; -- prepare for call
       end if;
 
       if PH_Regfile1 then
         reg_a <= rf_readdata; -- latch register A
-        if r_type then
-          rf_wraddr <= to_integer(instr_c); -- r[C]
-        else
-          rf_wraddr <= to_integer(instr_b); -- r[B]
-        end if;
       end if;
 
       -- register file write
@@ -384,6 +378,8 @@ begin
   end process;
 
   rf_rdaddr <= to_integer(instr_a) when PH_Decode else to_integer(instr_b);
+  -- rf_wraddr <= to_integer(instr_c) when r_type else 31 when is_dst_ra else to_integer(instr_b);
+  rf_wraddr <= 31 when is_call else to_integer(instr_c) when r_type else to_integer(instr_b);
   rf_wrnextpc <= is_call or is_next_pc;
   rf:entity work.n2register_file
    port map (

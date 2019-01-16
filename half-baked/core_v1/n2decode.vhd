@@ -16,8 +16,8 @@ entity n2decode is
   is_srcreg_b  : out boolean;  -- true when r[B] is source for ALU, Branch or shift operation, but not for stores
   is_b_zero    : out boolean;
   writeback_ex : out boolean;  -- true when destination register is updated with result of PH_execute stage
-  is_call      : out boolean;  -- active for call instructions an the next clock after start
-  is_next_pc   : out boolean;  -- active for nextpc instruction two clocks after start
+  is_call      : out boolean;  -- active for call instructions on the next clock after start
+  is_next_pc   : out boolean;  -- active for nextpc instruction on the next clock after start
   imm16_class  : out imm16_class_t;
   shifter_op   : out natural range 0 to 7;  -- shift/rotate unit internal opcode
   mem_op       : out natural range 0 to 15; -- memory(LSU) unit internal opcode
@@ -42,15 +42,14 @@ architecture a of n2decode is
   -- alias imm26 : unsigned(25 downto 0) is instruction(31 downto  6); -- J-type
 
   signal op_reg   : unsigned(5  downto 0);
-  signal start_s1 : boolean;
 begin
 
   process (clk)
   begin
     if rising_edge(clk) then
       is_b_zero <= b=0;
-      start_s1 <= start;
       is_call  <= false;
+      is_next_pc <= false;
 
       if start then
         op_reg <= op;
@@ -65,6 +64,7 @@ begin
           r_type <= true;
           op_reg <= opx;
           is_call <= opx=OPX_CALLR;
+          is_next_pc <= opx=OPX_NEXTPC;
           case to_integer(opx) is
             when OPX_RET   => jump_class <= JUMP_CLASS_INDIRECT;
             when OPX_JMP   => jump_class <= JUMP_CLASS_INDIRECT;
@@ -72,11 +72,6 @@ begin
             when others => null;
           end case;
         end if;
-      end if;
-
-      is_next_pc <= false;
-      if start_s1 then
-        is_next_pc <= r_type and op_reg=OPX_NEXTPC;
       end if;
     end if;
   end process;
