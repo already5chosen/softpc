@@ -83,7 +83,8 @@ architecture a of nios2ee is
   -- For Avalon-mm accesses remain at this phase until fabric asserts avm_readdatavalid signal
 
   subtype u32 is unsigned(31 downto 0);
-  signal pc, nextpc : unsigned(31 downto 2);
+  signal pc     : unsigned(TCM_ADDR_WIDTH-1 downto 2);
+  signal nextpc : unsigned(31 downto 2);
 
   alias instr_s1 : u32 is tcm_readdata;
   -- instruction decode signals
@@ -201,7 +202,10 @@ begin
 
   -- program counter/jumps/branches
   iu:entity work.n2program_counter
-   generic map (RESET_ADDR => RESET_ADDR)
+   generic map (
+    TCM_ADDR_WIDTH => TCM_ADDR_WIDTH,
+    RESET_ADDR     => RESET_ADDR    ,
+    TCM_REGION_IDX => TCM_REGION_IDX)
    port map (
     clk           => clk,                                   -- in  std_logic;
     s_reset       => s_reset,                               -- in  boolean; -- synchronous reset
@@ -212,7 +216,7 @@ begin
     branch_taken  => cmp_result or is_br,                   -- in  boolean;
     imm26         => instr_imm26,                           -- in  unsigned(25 downto 0);
     reg_a         => rf_readdata,                           -- in  unsigned(31 downto 0);
-    addr          => pc,                                    -- out unsigned(31 downto 2)
+    addr          => pc,                                    -- out unsigned(TCM_ADDR_WIDTH-1 downto 2)
     nextpc        => nextpc                                 -- out unsigned(31 downto 2)
    );
 
@@ -431,7 +435,7 @@ begin
 
   tcm_rdaddress <=
     dm_address(TCM_ADDR_WIDTH-1 downto 2) when PH_Load_Address else
-    std_logic_vector(pc(TCM_ADDR_WIDTH-1 downto 2));
+    std_logic_vector(pc);
   tcm_wraddress  <= dm_address(TCM_ADDR_WIDTH-1 downto 2);
   tcm_byteenable <= byteenable;
   tcm_writedata  <= writedata;
