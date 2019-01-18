@@ -19,7 +19,7 @@ almost to the end, before the next one is started:
  - Drive register file address with indices of the registers A and B
  - Latch instruction word
  - Calculate NextPC
-3. Regfile1
+3. Regfile
  - Latch value of the register A
  - Latch the second ALU/AGU/shifter input - either value of the register B or immediate operand
  - For calls and NextPC - write NextPC to destination register (rA=r31 or rC)
@@ -59,10 +59,10 @@ TCM loads                                - 6
 AVM loads                                - 6 + wait states (waitrequest='1') + latency (readdatavalid='0')
 
 Synthesis/Fitter results with Balanced target
-Fmax (10CL006YE144C8G) : ???.? MHz
-Fmax (10CL006YE144C6G) : ???.? MHz
+Fmax (10CL006YE144C8G) : 143.0 MHz
+Fmax (10CL006YE144C6G) : 187.8 MHz
 
-Area (10CL006YE144C8G) : ??? LCs + 2 M9K + 0 DSPs
+Area (10CL006YE144C8G) : 708 LCs + 2 M9K + 0 DSPs
 
 
 

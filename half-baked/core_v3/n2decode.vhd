@@ -14,7 +14,6 @@ entity n2decode is
   instr_class  : out instr_class_t;
   is_br        : out boolean;  -- unconditional branch
   is_srcreg_b  : out boolean;  -- true when r[B] is source for ALU, Branch or shift operation, but not for stores
-  is_b_zero    : out boolean;
   writeback_ex : out boolean;  -- true when destination register is updated with result of PH_execute stage
   is_call      : out boolean;  -- active for call instructions on the next clock after start
   is_next_pc   : out boolean;  -- active for nextpc instruction on the next clock after start
@@ -47,7 +46,6 @@ begin
   process (clk)
   begin
     if rising_edge(clk) then
-      is_b_zero <= b=0;
       is_call  <= false;
       is_next_pc <= false;
 

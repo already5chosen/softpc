@@ -47,25 +47,23 @@ architecture a of nios2ee is
 
   signal PH_Decode : boolean;
   -- Calculate NextPC
-  -- Drive register file address with index of register A
+  -- Drive register file address with indices of the registers A and B
   -- Latch instruction word
 
-  signal PH_Regfile1 : boolean;
-  -- Start to drive register file address with index of register B
+  signal PH_Regfile : boolean;
   -- Latch value of register A
-  -- For calls - write NextPC to RA
+  -- Latch the second ALU/AGU/shifter input - either value of the register B or immediate operand
+  -- For calls and NextPC - write NextPC to destination register (rA=r31 or rC)
   -- Calculate branch target of taken PC-relative branches
   -- For jumps and calls - reload PC and finish
+  -- For unconditional Branch - reload PC with NextPC set PH_Branch and finish
   -- For rest of instruction -  reload PC with NextPC and continue
-
-  signal PH_Regfile2 : boolean;
-  -- [Optional] used by instructions with 2 register sources except for integer stores
-  -- Latch value of register B
 
   signal PH_Execute : boolean;
   -- Process operands by ALU/AGU/Shifter
   -- Latch writedata
   -- finish all instructions except conditional branches and memory accesses
+  -- For conditional Branch - set PH_Branch and finish
 
   signal PH_Branch  : boolean;
   -- [Optional] used only by PC-relative branches
@@ -98,7 +96,7 @@ architecture a of nios2ee is
   alias instr_c     : unsigned(4  downto 0) is instr_s2(21 downto 17); -- R-type
   alias instr_imm26 : unsigned(25 downto 0) is instr_s2(31 downto  6); -- J-type
 
-  signal r_type, writeback_ex, is_call, is_next_pc, is_br, is_b_zero, is_srcreg_b : boolean;
+  signal r_type, writeback_ex, is_call, is_next_pc, is_br, is_srcreg_b : boolean;
   signal jump_class   : jump_class_t;
   signal instr_class  : instr_class_t;
   signal imm16_class  : imm16_class_t;
@@ -116,12 +114,13 @@ architecture a of nios2ee is
 
   -- register file access
   signal rf_wrnextpc : boolean;
-  signal rf_readdata : u32;
-  signal rf_wraddr, rf_rdaddr : natural range 0 to 31;
+  signal rf_readdata_a, rf_readdata_b : u32;
+  signal rf_wraddr, rf_rdaddr_a, rf_rdaddr_b : natural range 0 to 31;
   signal dstreg_wren, result_sel_alu : boolean;
 
-  alias rf_readdata_h : unsigned(15 downto 0) is rf_readdata(15 downto 0);
-  alias rf_readdata_b : unsigned(7 downto 0)  is rf_readdata(7 downto 0);
+  alias rf_storedata_w : unsigned(31 downto 0) is rf_readdata_b(31 downto 0);
+  alias rf_storedata_h : unsigned(15 downto 0) is rf_readdata_b(15 downto 0);
+  alias rf_storedata_b : unsigned(7 downto 0)  is rf_readdata_b(7 downto 0);
 
   -- memory access signals
   signal is_tcm, is_tcm_reg : boolean;
@@ -144,7 +143,7 @@ begin
     end if;
   end process;
 
-  -- instruction decoder, results available in PH_Regfile1 stage
+  -- instruction decoder, results available in PH_Regfile stage
   d:entity work.n2decode
    port map (
     clk          => clk,          -- in  std_logic;
@@ -155,7 +154,6 @@ begin
     jump_class   => jump_class,   -- out jump_class_t;
     instr_class  => instr_class , -- out instr_class_t;
     is_srcreg_b  => is_srcreg_b,  -- out boolean; -- true when r[B] is source for ALU, Branch or shift operation, but not for stores
-    is_b_zero    => is_b_zero,    -- out boolean;
     is_br        => is_br,        -- out boolean; -- unconditional branch
     writeback_ex => writeback_ex, -- out boolean; -- true when destination register is updated with result of PH_execute stage
     is_call      => is_call,      -- out boolean; -- active for call instructions on the next clock after start
@@ -210,12 +208,12 @@ begin
     clk           => clk,                                   -- in  std_logic;
     s_reset       => s_reset,                               -- in  boolean; -- synchronous reset
     calc_nextpc   => PH_Decode,                             -- in  boolean;
-    update_addr   => PH_Regfile1,                           -- in  boolean;
+    update_addr   => PH_Regfile,                           -- in  boolean;
     jump_class    => jump_class,                            -- in  jump_class_t;
     branch        => PH_Branch,                             -- in  boolean;
     branch_taken  => cmp_result or is_br,                   -- in  boolean;
     imm26         => instr_imm26,                           -- in  unsigned(25 downto 0);
-    reg_a         => rf_readdata,                           -- in  unsigned(31 downto 0);
+    reg_a         => rf_readdata_a,                         -- in  unsigned(31 downto 0);
     addr          => pc,                                    -- out unsigned(TCM_ADDR_WIDTH-1 downto 2)
     nextpc        => nextpc                                 -- out unsigned(31 downto 2)
    );
@@ -228,8 +226,7 @@ begin
 
       PH_Fetch          <= false;
       PH_Decode         <= false;
-      PH_Regfile1       <= false;
-      PH_Regfile2       <= false;
+      PH_Regfile       <= false;
       PH_Execute        <= false;
       PH_Branch         <= false;
       PH_Load_Address <= false;
@@ -252,24 +249,18 @@ begin
           end if;
         end if;
 
-        PH_Regfile1 <= PH_Decode;
+        PH_Regfile <= PH_Decode;
 
-        if PH_Regfile1 then
+        if PH_Regfile then
 
           if jump_class/=JUMP_CLASS_OTHERS then
             PH_Fetch <= true; -- last execution stage of direct and inderect jumps
           elsif is_br then
             PH_Fetch <= true; -- last execution stage of unconditional branch
             PH_Branch <= true;
-          elsif is_srcreg_b and not is_b_zero then
-            PH_Regfile2 <= true;
           else
             PH_Execute  <= true;
           end if;
-        end if;
-
-        if PH_Regfile2 then
-          PH_Execute <= true;
         end if;
 
         if PH_Execute then
@@ -323,8 +314,8 @@ begin
         instr_s2  <= instr_s1(31 downto 6);
       end if;
 
-      if PH_Regfile1 then
-        reg_a <= rf_readdata; -- latch register A
+      if PH_Regfile then
+        reg_a <= rf_readdata_a; -- latch register A
       end if;
 
       -- register file write
@@ -345,12 +336,12 @@ begin
     variable h_sel : h_sel_t;
   begin
     if rising_edge(clk) then
-      if PH_Regfile1 then
+      if is_srcreg_b  then
+        l_sel := sel_rf ;
+        h_sel := sel_rf ;
+      else
         -- type-I instructions except branches or shifts by immediate - the second source operand is immediate
-        if is_srcreg_b then
-           l_sel := sel_0;
-           h_sel := sel_0;
-        elsif imm16_class = IMM16_CLASS_h16 then
+        if imm16_class = IMM16_CLASS_h16 then
            l_sel := sel_0;
            h_sel := sel_imm;
         else
@@ -361,34 +352,32 @@ begin
              h_sel := sel_0;
            end if;
         end if;
-      else
-        l_sel := sel_rf ;
-        h_sel := sel_rf ;
       end if;
 
       case l_sel is
         when sel_imm => reg_b(15 downto 0) <= instr_imm16;
-        when sel_rf  => reg_b(15 downto 0) <= rf_readdata(15 downto 0);
+        when sel_rf  => reg_b(15 downto 0) <= rf_readdata_b(15 downto 0);
         when sel_0   => reg_b(15 downto 0) <= (others => '0');
       end case;
 
       case h_sel is
         when sel_imm => reg_b(31 downto 16) <= instr_imm16;
-        when sel_rf  => reg_b(31 downto 16) <= rf_readdata(31 downto 16);
+        when sel_rf  => reg_b(31 downto 16) <= rf_readdata_b(31 downto 16);
         when sel_0   => reg_b(31 downto 16) <= (others => '0');
         when sel_1   => reg_b(31 downto 16) <= (others => '1');
       end case;
     end if;
   end process;
 
-  rf_rdaddr <= to_integer(instr_a) when PH_Decode else to_integer(instr_b);
-  -- rf_wraddr <= to_integer(instr_c) when r_type else 31 when is_dst_ra else to_integer(instr_b);
+  rf_rdaddr_a <= to_integer(instr_a);
+  rf_rdaddr_b <= to_integer(instr_b);
   rf_wraddr <= 31 when is_call else to_integer(instr_c) when r_type else to_integer(instr_b);
   rf_wrnextpc <= is_call or is_next_pc;
   rf:entity work.n2register_file
    port map (
     clk         => clk,            -- in  std_logic;
-    rdaddr      => rf_rdaddr,      -- in  natural range 0 to 31;
+    rdaddr_a    => rf_rdaddr_a,    -- in  natural range 0 to 31;
+    rdaddr_b    => rf_rdaddr_b,    -- in  natural range 0 to 31;
     wraddr      => rf_wraddr,      -- in  natural range 0 to 31;
     nextpc      => nextpc,         -- in  unsigned(31 downto 2);
     wrnextpc    => rf_wrnextpc,    -- in  boolean;
@@ -396,8 +385,9 @@ begin
     wrdata1     => sh_result,      -- in  unsigned(31 downto 0);
     wrdata_sel0 => result_sel_alu, -- in  boolean;
     dstreg_wren => dstreg_wren,    -- in  boolean;
-    -- read result q available on the next clock after rdaddr
-    q => rf_readdata -- out unsigned(31 downto 0)
+    -- read result q available on the next clock after rdaddr_*
+    q_a => rf_readdata_a, -- out unsigned(31 downto 0)
+    q_b => rf_readdata_b  -- out unsigned(31 downto 0)
   );
 
 
@@ -412,18 +402,18 @@ begin
     case mem_op_i mod 4 is
       when MEM_OP_B =>
         byteenable(bi) <= '1';
-        writedata_mux <= rf_readdata_b & rf_readdata_b & rf_readdata_b & rf_readdata_b;
+        writedata_mux <= rf_storedata_b & rf_storedata_b & rf_storedata_b & rf_storedata_b;
         readdata_bi <= bi;
 
       when MEM_OP_H =>
         byteenable((bi/2)*2+0) <= '1';
         byteenable((bi/2)*2+1) <= '1';
-        writedata_mux <= rf_readdata_h & rf_readdata_h;
+        writedata_mux <= rf_storedata_h & rf_storedata_h;
         readdata_bi <= (bi/2)*2;
 
       when others =>
         byteenable <= (others => '1');
-        writedata_mux <= rf_readdata;
+        writedata_mux <= rf_storedata_w;
         readdata_bi <= 0;
     end case;
 

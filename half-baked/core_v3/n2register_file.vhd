@@ -5,7 +5,8 @@ use ieee.numeric_std.all;
 entity n2register_file is
  port (
   clk         : in  std_logic;
-  rdaddr      : in  natural range 0 to 31;
+  rdaddr_a    : in  natural range 0 to 31;
+  rdaddr_b    : in  natural range 0 to 31;
   wraddr      : in  natural range 0 to 31;
   nextpc      : in  unsigned(31 downto 2);
   wrnextpc    : in  boolean;
@@ -14,7 +15,7 @@ entity n2register_file is
   wrdata_sel0 : in  boolean;
   dstreg_wren : in  boolean;
   -- read result q available on the next clock after rdaddr
-  q : out unsigned(31 downto 0)
+  q_a, q_b    : out unsigned(31 downto 0)
  );
 end entity n2register_file;
 
@@ -31,7 +32,8 @@ begin
   begin
     if rising_edge(clk) then
       -- read
-      q <= rf(rdaddr);
+      q_a <= rf(rdaddr_a);
+      q_b <= rf(rdaddr_b);
 
       -- write
       wren := dstreg_wren and (wraddr/=0);
