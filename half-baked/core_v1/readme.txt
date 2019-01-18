@@ -9,17 +9,17 @@ almost to the end, before the next one is started:
 
 1. Fetch
  - Start to drive instruction address on tcm_rdaddress.
- - Calculate NextPC
-2. Decode1
+2. Decode
  - Drive register file address with index of the register A
  - Latch instruction word
+ - Calculate NextPC
 3. Regfile1
  - Latch value of the register A
  - Start to drive register file address with index of the register B
- - For calls - write NextPC to RA (R31)
+ - For calls and NextPC - write NextPC to destination register (rA=r31 or rC)
  - Calculate branch target of taken PC-relative branches
  - Jumps and calls - reload PC and finish
- - Unconditional Branch - continue to Branch phase
+ - Unconditional Branch - reload PC with NextPC and continue to Fetch+Branch phase (effectively finish)
  - The rest of instruction - reload PC with NextPC and continue
 4. Regfile2 - [Optional]
  - used by instructions that have register B as a source except for integer stores and B=0
@@ -45,17 +45,18 @@ almost to the end, before the next one is started:
 Writeback/Store and Branch phases of instruction overlaps with Fetch phase of the next instruction.
 
 Cycle count:
-Jumps, calls, return                     - 3
-Unconditional branch                     - 3
-ALU/Shifter with immediate 2nd operand   - 4
-ALU/Shifter with R0 as the 2nd operand   - 4
-NOPs (cache control instructions etc...) - 4
-TCM stores                               - 4
-AVM stores                               - 4 + wait states (waitrequest='1')
-ALU/Shifter with Rb as the 2nd operand   - 5
-Conditional branches                     - 5
-TCM loads                                - 6
-AVM loads                                - 6 + wait states (waitrequest='1') + latency (readdatavalid='0')
+Jumps, calls, return                            - 3
+Unconditional branch                            - 3
+ALU/Shifter with immediate 2nd operand          - 4
+ALU/Shifter with R0 as the 2nd operand          - 4
+Conditional branches with R0 as the 2nd operand - 4
+NOPs (cache control instructions etc...)        - 4
+TCM stores                                      - 4
+AVM stores                                      - 4 + wait states (waitrequest='1')
+ALU/Shifter with Rb as the 2nd operand          - 5
+Conditional branches Rb as the 2nd operand      - 5
+TCM loads                                       - 6
+AVM loads                                       - 6 + wait states (waitrequest='1') + latency (readdatavalid='0')
 
 Synthesis/Fitter results with Balanced target
 Fmax (10CL006YE144C8G) : 147.5 MHz
