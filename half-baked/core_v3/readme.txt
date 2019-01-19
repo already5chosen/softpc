@@ -39,7 +39,6 @@ almost to the end, before the next one is started:
 8. Load_Data (Optional, used only by memory loads)
  - For Avalon-mm accesses: remain at this phase until fabric asserts avm_readdatavalid signal
  - For byte and half-word accesses: align and sign-extend or zero-extend Load data
- - Align and sign or zero-extend Load data
 9. Writeback/Store
  - For ALU/Shift/Load: write result of the instruction into register file.
  - For stores: drive memory address/control/*_writedata and *_byteenable buses
