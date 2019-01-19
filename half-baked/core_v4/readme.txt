@@ -31,7 +31,7 @@ almost to the end, before the next one is started:
  - used by instructions that have register B as a source except for integer stores and B=0
  - Start ALU/Shifter operations
  - ALU/Shifter instructions - continue to Writeback/Store
- - Conditional Branches with B=0 - Start ALU operations, continue to Branch
+ - Conditional Branches     - Start ALU operations, continue to Branch
 5. Load_Address (Optional, used only by memory loads)
  - Drive tcm_rdaddress and avm_address/control buses
  - For Avalon-mm accesses remain at this phase until fabric de-asserts avm_waitrequest signal
@@ -62,7 +62,7 @@ TCM loads                                       - 5
 AVM loads                                       - 5 + wait states (waitrequest='1') + latency (readdatavalid='0')
 
 Synthesis/Fitter results with Balanced target
-Fmax (10CL006YE144C8G) : ???.? MHz
-Fmax (10CL006YE144C6G) : ???.? MHz
+Fmax (10CL006YE144C8G) : 104.0 MHz
+Fmax (10CL006YE144C6G) : 135.2 MHz
 
-Area (10CL006YE144C8G) : ??? LCs + 1 M9K + 0 DSPs
+Area (10CL006YE144C8G) : 737 LCs + 1 M9K + 0 DSPs

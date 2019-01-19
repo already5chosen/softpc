@@ -50,22 +50,25 @@ architecture a of nios2ee is
   -- Drive register file address with index of register A
   -- Latch instruction word
 
-  signal PH_Regfile1 : boolean;
+  signal PH_Execute1 : boolean;
   -- Start to drive register file address with index of register B
   -- Latch value of register A
   -- For calls - write NextPC to RA
   -- Calculate branch target of taken PC-relative branches
   -- For jumps and calls - reload PC and finish
-  -- For rest of instruction -  reload PC with NextPC and continue
+  -- For Unconditional Branch - reload PC with NextPC and continue to Fetch+Branch phase (effectively finish)
+  -- The rest of instruction - reload PC with NextPC
+  -- For ALU/Shifter instructions with immediate operand or with B=0 - Start ALU/Shifter operations, continue to Writeback/Store
+  -- For Conditional Branches with B=0 - Start ALU operations, continue to Branch
+  -- For Memory Loads  - Start AGU operations, continue to Load_Address
+  -- For Memory Stores - Start AGU operations, continue to Writeback/Store
+  -- For ALU/Shifter/CondBr with B/=0 - continue to Execute2
 
-  signal PH_Regfile2 : boolean;
-  -- [Optional] used by instructions with 2 register sources except for integer stores
-  -- Latch value of register B
-
-  signal PH_Execute : boolean;
-  -- Process operands by ALU/AGU/Shifter
-  -- Latch writedata
-  -- finish all instructions except conditional branches and memory accesses
+  signal PH_Execute2 : boolean;
+  -- [Optional] used by instructions that have register B as a source except for integer stores and B=0
+  -- Start ALU/Shifter operations
+  -- For ALU/Shifter instructions - continue to Writeback/Store
+  -- For conditional Branches     - continue to Branch
 
   signal PH_Branch  : boolean;
   -- [Optional] used only by PC-relative branches
@@ -105,7 +108,7 @@ architecture a of nios2ee is
   signal alu_op, mem_op_i : natural range 0 to 15; -- ALU and memory(LSU) unit internal opcode
   signal shifter_op : natural range 0 to 7;  -- shift/rotate unit internal opcode
   signal mem_op_u : unsigned(3 downto 0);  -- unsigned representation of mem_op_i
-  signal reg_a, reg_b : u32;
+  signal reg_a, src_a, src_b : u32;
 
   -- ALU/AGU
   signal alu_result, agu_result : u32;
@@ -144,7 +147,7 @@ begin
     end if;
   end process;
 
-  -- instruction decoder, results available in PH_Regfile1 stage
+  -- instruction decoder, results available in PH_Execute1 stage
   d:entity work.n2decode
    port map (
     clk          => clk,          -- in  std_logic;
@@ -172,10 +175,10 @@ begin
    generic map (DATA_WIDTH => 32)
    port map (
     clk    => clk        , -- in  std_logic;
-    start  => PH_Execute , -- in  boolean;
+    start  => PH_Execute1 or PH_Execute2, -- in  boolean;
     op     => alu_op     , -- in  natural range 0 to 15;
-    a      => reg_a      , -- in  unsigned(DATA_WIDTH-1 downto 0);
-    b      => reg_b      , -- in  unsigned(DATA_WIDTH-1 downto 0);
+    a      => src_a      , -- in  unsigned(DATA_WIDTH-1 downto 0);
+    b      => src_b      , -- in  unsigned(DATA_WIDTH-1 downto 0);
     -- results are available on the next clock after start
     result     => alu_result, -- out unsigned(DATA_WIDTH-1 downto 0)
     agu_result => agu_result, -- out unsigned(DATA_WIDTH-1 downto 0)
@@ -189,8 +192,8 @@ begin
     instr_class   => instr_class, -- in  instr_class_t;
     -- shift/rotate inputs
     sh_op_i       => shifter_op,                  -- in  natural range 0 to 7; -- shift/rotate unit internal opcode
-    a             => reg_a,                       -- in  unsigned;
-    b             => reg_b(4 downto 0),           -- in  unsigned;
+    a             => src_a,                       -- in  unsigned;
+    b             => src_b(4 downto 0),           -- in  unsigned;
     -- align/sign-extend load data inputs
     ld_op_i       => mem_op_i,                    -- in  natural range 0 to 15; -- memory(LSU) unit internal opcode
     readdata      => dm_readdata,                 -- in  unsigned;
@@ -210,7 +213,7 @@ begin
     clk           => clk,                                   -- in  std_logic;
     s_reset       => s_reset,                               -- in  boolean; -- synchronous reset
     calc_nextpc   => PH_Decode,                             -- in  boolean;
-    update_addr   => PH_Regfile1,                           -- in  boolean;
+    update_addr   => PH_Execute1,                           -- in  boolean;
     jump_class    => jump_class,                            -- in  jump_class_t;
     branch        => PH_Branch,                             -- in  boolean;
     branch_taken  => cmp_result or is_br,                   -- in  boolean;
@@ -226,12 +229,11 @@ begin
       dm_write <= '0';
       dstreg_wren <= false;
 
-      PH_Fetch          <= false;
-      PH_Decode         <= false;
-      PH_Regfile1       <= false;
-      PH_Regfile2       <= false;
-      PH_Execute        <= false;
-      PH_Branch         <= false;
+      PH_Fetch        <= false;
+      PH_Decode       <= false;
+      PH_Execute1     <= false;
+      PH_Execute2     <= false;
+      PH_Branch       <= false;
       PH_Load_Address <= false;
       PH_Load_Data    <= false;
 
@@ -252,9 +254,9 @@ begin
           end if;
         end if;
 
-        PH_Regfile1 <= PH_Decode;
+        PH_Execute1 <= PH_Decode;
 
-        if PH_Regfile1 then
+        if PH_Execute1 then
 
           if jump_class/=JUMP_CLASS_OTHERS then
             PH_Fetch <= true; -- last execution stage of direct and inderect jumps
@@ -262,31 +264,30 @@ begin
             PH_Fetch <= true; -- last execution stage of unconditional branch
             PH_Branch <= true;
           elsif is_srcreg_b and not is_b_zero then
-            PH_Regfile2 <= true;
+            PH_Execute2 <= true;
           else
-            PH_Execute  <= true;
+            dstreg_wren <= writeback_ex;
+            if instr_class=INSTR_CLASS_MEMORY then
+              if mem_op_u(MEM_OP_BIT_STORE)='1' then
+                dm_write <= '1';
+                PH_Fetch <= true;
+              else
+                PH_Load_Address <= true;
+              end if;
+            else
+              PH_Fetch <= true;
+              if instr_class=INSTR_CLASS_BRANCH then
+                PH_Branch <= true;
+              end if;
+            end if;
           end if;
         end if;
 
-        if PH_Regfile2 then
-          PH_Execute <= true;
-        end if;
-
-        if PH_Execute then
+        if PH_Execute2 then
           dstreg_wren <= writeback_ex;
-          writedata <= std_logic_vector(writedata_mux);
-          if instr_class=INSTR_CLASS_MEMORY then
-            if mem_op_u(MEM_OP_BIT_STORE)='1' then
-              dm_write <= '1';
-              PH_Fetch <= true;
-            else
-              PH_Load_Address <= true;
-            end if;
-          else
-            PH_Fetch <= true;
-            if instr_class=INSTR_CLASS_BRANCH then
-              PH_Branch <= true;
-            end if;
+          PH_Fetch <= true;
+          if instr_class=INSTR_CLASS_BRANCH then
+            PH_Branch <= true;
           end if;
         end if;
 
@@ -323,7 +324,7 @@ begin
         instr_s2  <= instr_s1(31 downto 6);
       end if;
 
-      if PH_Regfile1 then
+      if PH_Execute1 then
         reg_a <= rf_readdata; -- latch register A
       end if;
 
@@ -333,8 +334,11 @@ begin
     end if;
   end process;
 
+  -- reg_a as a source mux
+  src_a <= reg_a when PH_Execute2 else rf_readdata;
+
   -- reg_b as a source mux
-  process (clk)
+  process (all)
     constant sel_imm : natural := 0;
     constant sel_rf  : natural := 1;
     constant sel_0   : natural := 2;
@@ -344,45 +348,42 @@ begin
     variable l_sel : l_sel_t;
     variable h_sel : h_sel_t;
   begin
-    if rising_edge(clk) then
-      if PH_Regfile1 then
-        -- type-I instructions except branches or shifts by immediate - the second source operand is immediate
-        if is_srcreg_b then
-           l_sel := sel_0;
-           h_sel := sel_0;
-        elsif imm16_class = IMM16_CLASS_h16 then
-           l_sel := sel_0;
-           h_sel := sel_imm;
-        else
-           l_sel := sel_imm;
-           if imm16_class = IMM16_CLASS_s16 and instr_imm16(15)='1' then
-             h_sel := sel_1;
-           else
-             h_sel := sel_0;
-           end if;
-        end if;
+    if PH_Execute2 then
+      l_sel := sel_rf ;
+      h_sel := sel_rf ;
+    else
+      -- type-I instructions except branches or shifts by immediate - the second source operand is immediate
+      if is_srcreg_b then
+        l_sel := sel_0;
+        h_sel := sel_0;
+      elsif imm16_class = IMM16_CLASS_h16 then
+        l_sel := sel_0;
+        h_sel := sel_imm;
       else
-        l_sel := sel_rf ;
-        h_sel := sel_rf ;
+        l_sel := sel_imm;
+        if imm16_class = IMM16_CLASS_s16 and instr_imm16(15)='1' then
+          h_sel := sel_1;
+        else
+          h_sel := sel_0;
+        end if;
       end if;
-
-      case l_sel is
-        when sel_imm => reg_b(15 downto 0) <= instr_imm16;
-        when sel_rf  => reg_b(15 downto 0) <= rf_readdata(15 downto 0);
-        when sel_0   => reg_b(15 downto 0) <= (others => '0');
-      end case;
-
-      case h_sel is
-        when sel_imm => reg_b(31 downto 16) <= instr_imm16;
-        when sel_rf  => reg_b(31 downto 16) <= rf_readdata(31 downto 16);
-        when sel_0   => reg_b(31 downto 16) <= (others => '0');
-        when sel_1   => reg_b(31 downto 16) <= (others => '1');
-      end case;
     end if;
+
+    case l_sel is
+      when sel_imm => src_b(15 downto 0) <= instr_imm16;
+      when sel_rf  => src_b(15 downto 0) <= rf_readdata(15 downto 0);
+      when sel_0   => src_b(15 downto 0) <= (others => '0');
+    end case;
+
+    case h_sel is
+      when sel_imm => src_b(31 downto 16) <= instr_imm16;
+      when sel_rf  => src_b(31 downto 16) <= rf_readdata(31 downto 16);
+      when sel_0   => src_b(31 downto 16) <= (others => '0');
+      when sel_1   => src_b(31 downto 16) <= (others => '1');
+    end case;
   end process;
 
   rf_rdaddr <= to_integer(instr_a) when PH_Decode else to_integer(instr_b);
-  -- rf_wraddr <= to_integer(instr_c) when r_type else 31 when is_dst_ra else to_integer(instr_b);
   rf_wraddr <= 31 when is_call else to_integer(instr_c) when r_type else to_integer(instr_b);
   rf_wrnextpc <= is_call or is_next_pc;
   rf:entity work.n2register_file
@@ -433,6 +434,7 @@ begin
     is_tcm <= (to_integer(addr)/2**TCM_ADDR_WIDTH)=TCM_REGION_IDX;
   end process;
 
+  writedata <= std_logic_vector(writedata_mux);
   tcm_rdaddress <=
     dm_address(TCM_ADDR_WIDTH-1 downto 2) when PH_Load_Address else
     std_logic_vector(pc);
