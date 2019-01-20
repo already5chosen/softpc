@@ -12,7 +12,6 @@ entity n2decode is
   r_type       : out boolean;
   jump_class   : out jump_class_t;
   instr_class  : out instr_class_t;
-  is_br        : out boolean;  -- unconditional branch
   is_srcreg_b  : out boolean;  -- true when r[B] is source for ALU, Branch or shift operation, but not for stores
   writeback_ex : out boolean;  -- true when destination register is updated with result of PH_execute stage
   is_call      : out boolean;  -- active for call instructions on the next clock after start
@@ -82,7 +81,6 @@ begin
     imm16_class  <= IMM16_CLASS_s16;
     writeback_ex <= false;
     alu_op       <= ALU_OP_ADD;
-    is_br        <= false;
 
     if not r_type then
       is_srcreg_b <= (op_reg mod 4) = 2; -- branches and nops
@@ -109,7 +107,7 @@ begin
 
         when OP_BR    =>
           instr_class  <= INSTR_CLASS_BRANCH;
-          is_br        <= true;
+          alu_op       <= ALU_OP_CMPEQ; -- unconditional branch decoded as BEQ r0,r0
 
         when OP_LDB   =>
           instr_class  <= INSTR_CLASS_MEMORY;
