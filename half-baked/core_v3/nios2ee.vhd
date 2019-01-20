@@ -86,15 +86,15 @@ architecture a of nios2ee is
 
   alias instr_s1 : u32 is tcm_readdata;
   -- instruction decode signals
-  signal instr_s2 : unsigned(31 downto 6);
-  -- alias instr_op    : unsigned(5  downto 0) is tcm_readdata( 5 downto  0);
-  alias instr_imm16 : unsigned(15 downto 0) is instr_s2(21 downto  6); -- I-type
-  alias instr_b     : unsigned(4  downto 0) is instr_s2(26 downto 22); -- I-type and R-type
-  alias instr_a     : unsigned(4  downto 0) is instr_s1(31 downto 27); -- I-type and R-type
+  signal instr_s2      : unsigned(31 downto 6);
+  alias instr_s1_a     : unsigned(4  downto 0) is instr_s1(31 downto 27); -- I-type and R-type
+  alias instr_s1_b     : unsigned(4  downto 0) is instr_s1(26 downto 22); -- I-type and R-type
+  alias instr_s2_b     : unsigned(4  downto 0) is instr_s2(26 downto 22); -- I-type and R-type
+  alias instr_s2_imm16 : unsigned(15 downto 0) is instr_s2(21 downto  6); -- I-type
   -- alias instr_imm5  : unsigned(4  downto 0) is tcm_readdata(10 downto  6); -- R-type
   -- alias instr_opx   : unsigned(5  downto 0) is tcm_readdata(16 downto 11); -- R-type
-  alias instr_c     : unsigned(4  downto 0) is instr_s2(21 downto 17); -- R-type
-  alias instr_imm26 : unsigned(25 downto 0) is instr_s2(31 downto  6); -- J-type
+  alias instr_s2_c     : unsigned(4  downto 0) is instr_s2(21 downto 17); -- R-type
+  alias instr_s2_imm26 : unsigned(25 downto 0) is instr_s2(31 downto  6); -- J-type
 
   signal r_type, writeback_ex, is_call, is_next_pc, is_br, is_srcreg_b : boolean;
   signal jump_class   : jump_class_t;
@@ -208,11 +208,11 @@ begin
     clk           => clk,                                   -- in  std_logic;
     s_reset       => s_reset,                               -- in  boolean; -- synchronous reset
     calc_nextpc   => PH_Decode,                             -- in  boolean;
-    update_addr   => PH_Regfile,                           -- in  boolean;
+    update_addr   => PH_Regfile,                            -- in  boolean;
     jump_class    => jump_class,                            -- in  jump_class_t;
     branch        => PH_Branch,                             -- in  boolean;
     branch_taken  => cmp_result or is_br,                   -- in  boolean;
-    imm26         => instr_imm26,                           -- in  unsigned(25 downto 0);
+    imm26         => instr_s2_imm26,                        -- in  unsigned(25 downto 0);
     reg_a         => rf_readdata_a,                         -- in  unsigned(31 downto 0);
     addr          => pc,                                    -- out unsigned(TCM_ADDR_WIDTH-1 downto 2)
     nextpc        => nextpc                                 -- out unsigned(31 downto 2)
@@ -346,7 +346,7 @@ begin
            h_sel := sel_imm;
         else
            l_sel := sel_imm;
-           if imm16_class = IMM16_CLASS_s16 and instr_imm16(15)='1' then
+           if imm16_class = IMM16_CLASS_s16 and instr_s2_imm16(15)='1' then
              h_sel := sel_1;
            else
              h_sel := sel_0;
@@ -355,13 +355,13 @@ begin
       end if;
 
       case l_sel is
-        when sel_imm => reg_b(15 downto 0) <= instr_imm16;
+        when sel_imm => reg_b(15 downto 0) <= instr_s2_imm16;
         when sel_rf  => reg_b(15 downto 0) <= rf_readdata_b(15 downto 0);
         when sel_0   => reg_b(15 downto 0) <= (others => '0');
       end case;
 
       case h_sel is
-        when sel_imm => reg_b(31 downto 16) <= instr_imm16;
+        when sel_imm => reg_b(31 downto 16) <= instr_s2_imm16;
         when sel_rf  => reg_b(31 downto 16) <= rf_readdata_b(31 downto 16);
         when sel_0   => reg_b(31 downto 16) <= (others => '0');
         when sel_1   => reg_b(31 downto 16) <= (others => '1');
@@ -369,9 +369,9 @@ begin
     end if;
   end process;
 
-  rf_rdaddr_a <= to_integer(instr_a);
-  rf_rdaddr_b <= to_integer(instr_b);
-  rf_wraddr <= 31 when is_call else to_integer(instr_c) when r_type else to_integer(instr_b);
+  rf_rdaddr_a <= to_integer(instr_s1_a);
+  rf_rdaddr_b <= to_integer(instr_s1_b);
+  rf_wraddr <= 31 when is_call else to_integer(instr_s2_c) when r_type else to_integer(instr_s2_b);
   rf_wrnextpc <= is_call or is_next_pc;
   rf:entity work.n2register_file
    port map (
