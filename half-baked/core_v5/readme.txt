@@ -1,12 +1,11 @@
-Variant 3.
-As variant 1, variant 3 is build for simplicity. As with variant 1, I don't
+Variant 5.
+As variants 1, 3 and 4 variant 5 is build for simplicity. As with variant 1, 3 and 4 I don't
 expect it to have practically useful ratio between resources and performance.
-The only thing that it will likely be good is a clock rate.
+However variants 5 is likely the most practical among the 4.
+That is modification of Variant 3 that is less obsessed with clock rate.
+Achievable Fmax is lower than Variants 1 or 3 or than Altera's Nios2e core, but IPC is higher.
 
-The main difference vs variant 1 is use of register file with 2 32-bit read ports.
-It means that on majority (or all) of Altera device families it will occupy 2 embedded
-memory blocks instead of one. On a plus side, this variant will be 15% faster on average
-and hopefully will require fewer LEs.
+The main difference vs variant 3 is absence of register stage between RF read and ALU/shifter.
 
 The core is build around full-speed 32-bit ALU and shifter, but features almost no concurrency between pipeline stages.
 
@@ -19,27 +18,24 @@ almost to the end, before the next one is started:
  - Drive register file address with indices of the registers A and B
  - Latch instruction word
  - Calculate NextPC
-3. Regfile
- - Latch value of the register A
- - Latch the second ALU/AGU/shifter input - either value of the register B or immediate operand
+3. Execute
  - For calls and NextPC - write NextPC to destination register (rA=r31 or rC)
  - Calculate branch target of taken PC-relative branches
  - Jumps and calls - reload PC and finish
- - Unconditional Branch - reload PC with NextPC and continue to Fetch+Branch phase (effectively finish)
+ - Conditional Branch - reload PC with NextPC and continue to Fetch+Branch phase (effectively finish)
  - The rest of instruction - reload PC with NextPC and continue
-5. Execute
  - Start ALU/AGU/Shifter operations
  - Latch writedata
  - All instructions except conditional branches and memory loads continue to writeback phase
-6. Branch [Optional, used only by PC-relative branches]
- - Conditionally or unconditionally update PC with branch target
-7. Load_Address (Optional, used only by memory loads)
+4. Load_Address (Optional, used only by memory loads)
  - Drive tcm_rdaddress and avm_address/control buses
  - For Avalon-mm accesses: remain at this phase until fabric de-asserts avm_waitrequest signal
-8. Load_Data (Optional, used only by memory loads)
+5. Load_Data (Optional, used only by memory loads)
  - For Avalon-mm accesses: remain at this phase until fabric asserts avm_readdatavalid signal
  - For byte and half-word accesses: align and sign-extend or zero-extend Load data
-9. Writeback/Store
+6. Branch [Optional, used only by PC-relative branches]
+ - Conditionally or unconditionally update PC with branch target
+7. Writeback/Store
  - For ALU/Shift/Load: write result of the instruction into register file.
  - For stores: drive memory address/control/*_writedata and *_byteenable buses
  - For Avalon-mm stores: remain at this phase until fabric de-asserts avm_waitrequest signal
@@ -49,19 +45,19 @@ Writeback/Store and Branch phases of instruction overlaps with Fetch phase of th
 Cycle count:
 Jumps, calls, return                     - 3
 Unconditional branch                     - 3
-ALU/Shifter                              - 4
-NOPs (cache control instructions etc...) - 4
-TCM stores                               - 4
-AVM stores                               - 4 + wait states (waitrequest='1')
-Conditional branches                     - 4
-TCM loads                                - 6
-AVM loads                                - 6 + wait states (waitrequest='1') + latency (readdatavalid='0')
+ALU/Shifter                              - 3
+NOPs (cache control instructions etc...) - 3
+TCM stores                               - 3
+AVM stores                               - 3 + wait states (waitrequest='1')
+Conditional branches                     - 3
+TCM loads                                - 5
+AVM loads                                - 5 + wait states (waitrequest='1') + latency (readdatavalid='0')
 
 Synthesis/Fitter results with Balanced target
-Fmax (10CL006YE144C8G) : 143.4 MHz
-Fmax (10CL006YE144C6G) : 186.3 MHz
+Fmax (10CL006YE144C8G) : ???.? MHz
+Fmax (10CL006YE144C6G) : ???.? MHz
 
-Area (10CL006YE144C8G) : 716 LCs + 2 M9K + 0 DSPs
+Area (10CL006YE144C8G) : ??? LCs + 2 M9K + 0 DSPs
 
 
 

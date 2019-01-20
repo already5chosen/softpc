@@ -27,19 +27,19 @@ almost to the end, before the next one is started:
  - Jumps and calls - reload PC and finish
  - Unconditional Branch - reload PC with NextPC and continue to Fetch+Branch phase (effectively finish)
  - The rest of instruction - reload PC with NextPC and continue
-5. Execute
+4. Execute
  - Start ALU/AGU/Shifter operations
  - Latch writedata
  - All instructions except conditional branches and memory loads continue to writeback phase
-6. Branch [Optional, used only by PC-relative branches]
- - Conditionally or unconditionally update PC with branch target
-7. Load_Address (Optional, used only by memory loads)
+5. Load_Address (Optional, used only by memory loads)
  - Drive tcm_rdaddress and avm_address/control buses
  - For Avalon-mm accesses: remain at this phase until fabric de-asserts avm_waitrequest signal
-8. Load_Data (Optional, used only by memory loads)
+6. Load_Data (Optional, used only by memory loads)
  - For Avalon-mm accesses: remain at this phase until fabric asserts avm_readdatavalid signal
  - For byte and half-word accesses: align and sign-extend or zero-extend Load data
-9. Writeback/Store
+7. Branch [Optional, used only by PC-relative branches]
+ - Conditionally or unconditionally update PC with branch target
+8. Writeback/Store
  - For ALU/Shift/Load: write result of the instruction into register file.
  - For stores: drive memory address/control/*_writedata and *_byteenable buses
  - For Avalon-mm stores: remain at this phase until fabric de-asserts avm_waitrequest signal

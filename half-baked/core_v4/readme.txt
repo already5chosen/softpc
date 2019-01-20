@@ -1,7 +1,7 @@
 Variant 4.
 Build for simplicity. I don't expect it to have practically useful ratio between resources and performance.
 That is modification of Variant 1 that is less obsessed with clock rate.
-Achievable Fmax is lower than Variants 1 or 2 or than Altera's Nios2e core, but IPC is higher.
+Achievable Fmax is lower than Variants 1 or 3 or than Altera's Nios2e core, but IPC is higher.
 
 The core is build around full-speed 32-bit ALU and shifter, but features almost no concurrency between pipeline stages.
 
