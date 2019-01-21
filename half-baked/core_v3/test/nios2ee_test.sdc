@@ -1,4 +1,4 @@
-create_clock -name clk -period "139 MHz" clk
-#create_clock -name clk -period "185 MHz" clk
+create_clock -name clk -period "133 MHz" clk
+#create_clock -name clk -period "175 MHz" clk
 derive_clock_uncertainty
 
