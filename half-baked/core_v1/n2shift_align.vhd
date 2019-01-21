@@ -8,7 +8,7 @@ use work.n2decode_definitions.all;
 entity n2shift_align is
  port (
   clk           : in  std_logic;
-  instr_class   : in  instr_class_t;
+  do_shift      : in  boolean;
   -- shift/rotate inputs
   sh_op_i       : in  natural range 0 to 7;  -- shift/rotate unit internal opcode
   a             : in  unsigned;
@@ -17,7 +17,6 @@ entity n2shift_align is
   ld_op_i       : in  natural range 0 to 15; -- memory(LSU) unit internal opcode
   readdata      : in  unsigned;
   readdata_bi   : in  unsigned; -- byte index of LS byte of load result in dm_readdata
-  readdatavalid : in  boolean;
   -- result
   result        : out unsigned  -- result latency = 1 clock
  );
@@ -49,7 +48,7 @@ begin
   begin
     if rising_edge(clk) then
       -- shifter/Load alignment
-      if instr_class=INSTR_CLASS_MEMORY then
+      if not do_shift then
         -- Load alignment
         case ld_op_i mod 4 is
           when MEM_OP_B => bysh_op_align <= "11"; bysh_sign_pos <= readdata_bi;
@@ -71,7 +70,7 @@ begin
       end if;
 
       -- byte shifter input mux
-      if readdatavalid then
+      if not do_shift then
         -- Load alignment
         bysh_a <= readdata;
         bysh_rshift <= readdata_bi;
