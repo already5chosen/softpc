@@ -189,7 +189,7 @@ begin
   sha:entity work.n2shift_align
    port map (
     clk           => clk,         -- in  std_logic;
-    instr_class   => instr_class, -- in  instr_class_t;
+    do_shift      => PH_Execute1 or PH_Execute2,  -- in  boolean;
     -- shift/rotate inputs
     sh_op_i       => shifter_op,                  -- in  natural range 0 to 7; -- shift/rotate unit internal opcode
     a             => src_a,                       -- in  unsigned;
@@ -198,7 +198,6 @@ begin
     ld_op_i       => mem_op_i,                    -- in  natural range 0 to 15; -- memory(LSU) unit internal opcode
     readdata      => dm_readdata,                 -- in  unsigned;
     readdata_bi   => to_unsigned(readdata_bi, 2), -- in  unsigned; -- byte index of LS byte of load result in dm_readdata
-    readdatavalid => PH_Load_Data,                -- in  boolean;
     -- result
     result        => sh_result    -- out unsigned -- result latency = 1 clock
    );
