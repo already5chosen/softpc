@@ -30,22 +30,25 @@ architecture a of n2shift_align is
   constant DATA_WIDTH : natural := a'length;
   constant B_WIDTH    : natural := b'length;
 
-  signal sh_op_shift, sh_op_left, sh_op_arith, byte_op_left, bysh_op_left : std_logic;
+  signal byte_op_left : std_logic;
+  signal bysh_op_shift, bysh_op_left, bysh_op_arith : std_logic;
   signal byte_b_lsbits, bysh_b_lsbits : boolean;
   signal bysh_op_align, byte_rshift, bysh_rshift, bysh_sign_pos : unsigned(B_WIDTH-4 downto 0);
   signal bish_result, bysh_a : unsigned(a'range);
+  signal sh_op_u : unsigned(2 downto 0);  -- unsigned representation of sh_op_i
+  signal ld_op_u : unsigned(3 downto 0);  -- unsigned representation of ld_op_i
+  alias sh_op_shift : std_logic is sh_op_u(SHIFTER_OP_BIT_SHIFT);
+  alias sh_op_arith : std_logic is sh_op_u(SHIFTER_OP_BIT_ARITH);
+  alias sh_op_left  : std_logic is sh_op_u(SHIFTER_OP_BIT_LEFT);
 begin
 
+  sh_op_u <= to_unsigned(sh_op_i, 3);
+  ld_op_u <= to_unsigned(ld_op_i, 4);
+
   process (clk)
-    variable ld_op_u : unsigned(3 downto 0);  -- unsigned representation of ld_op_i
-    variable sh_op_u : unsigned(2 downto 0);  -- unsigned representation of sh_op_i
   begin
     if rising_edge(clk) then
-      -- post-decode, results available in PH_Execute stage
       -- shifter/Load alignment
-      sh_op_u := to_unsigned(sh_op_i, 3);
-      ld_op_u := to_unsigned(ld_op_i, 4);
-      sh_op_left <= sh_op_u(SHIFTER_OP_BIT_LEFT);
       if instr_class=INSTR_CLASS_MEMORY then
         -- Load alignment
         case ld_op_i mod 4 is
@@ -53,15 +56,15 @@ begin
           when MEM_OP_H => bysh_op_align <= "10"; bysh_sign_pos <= to_unsigned((to_integer(readdata_bi)/2)*2 + 1, B_WIDTH-3);
           when others   => bysh_op_align <= "00"; bysh_sign_pos <= to_unsigned((to_integer(readdata_bi)/2)*2 + 1, B_WIDTH-3);
         end case;
-        sh_op_shift   <= '0';
-        sh_op_arith   <= not ld_op_u(MEM_OP_BIT_UNS);
+        bysh_op_shift <= '0';
+        bysh_op_arith <= not ld_op_u(MEM_OP_BIT_UNS);
         bysh_b_lsbits <= false;
         bysh_op_left  <= '0';
       else
         -- shift/rotate instructions
         bysh_op_align <= "00";
-        sh_op_shift   <= sh_op_u(SHIFTER_OP_BIT_SHIFT);
-        sh_op_arith   <= sh_op_u(SHIFTER_OP_BIT_ARITH);
+        bysh_op_shift <= sh_op_shift;
+        bysh_op_arith <= sh_op_arith;
         bysh_b_lsbits <= byte_b_lsbits;
         bysh_op_left  <= byte_op_left;
         bysh_sign_pos <= (others => '1'); -- sign in MS byte
@@ -101,9 +104,9 @@ begin
    generic map (DATA_WIDTH => 32, B_WIDTH => 5 )
    port map (
     op_align => bysh_op_align, -- in  unsigned(1 downto 0); -- '00' - shift/rotate, '10' - 16-bit align, '11' - 8-bit align
-    op_shift => sh_op_shift  , -- in  std_logic; -- '0' - rotate,      '1' - shift
+    op_shift => bysh_op_shift, -- in  std_logic; -- '0' - rotate,      '1' - shift
     op_left  => bysh_op_left , -- in  std_logic; -- '0' - shift right, '1' - shift left
-    op_arith => sh_op_arith  , -- in  std_logic; -- '0' - logical,     '1' - arithmetic (applicable when op_shift='1' and op_left='0')
+    op_arith => bysh_op_arith, -- in  std_logic; -- '0' - logical,     '1' - arithmetic (applicable when op_shift='1' and op_left='0')
     a        => bysh_a       , -- in  unsigned(DATA_WIDTH-1 downto 0);
     sign_pos => bysh_sign_pos, -- in  unsigned(B_WIDTH-1    downto 3);
     rshift   => bysh_rshift  , -- in  unsigned(B_WIDTH-1    downto 3);
