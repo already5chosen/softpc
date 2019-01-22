@@ -1,6 +1,8 @@
-Variant 1.
+Variant 6.
 Build for simplicity. I don't expect it to have practically useful ratio between resources and performance.
 The only thing that it will likely be good is a clock rate.
+This variant is close derivative of Variant 1. The difference is AGU implemented separately from ALU and
+AGU result fed to memory address buses without registration, thus making TCM load one clock cycle faster.
 
 The core is build around full-speed 32-bit ALU and shifter, but features almost no concurrency between pipeline stages.
 
@@ -26,15 +28,19 @@ almost to the end, before the next one is started:
  - Latch value of register B
 5. Execute
  - Start ALU/AGU/Shifter operations
+ - Drive tcm_rdaddress and avm_address buses (but not a control signals)
  - Latch writedata
  - All instructions except conditional branches and memory loads continue to writeback phase
 6. Branch [Optional, used only by PC-relative branches]
  - Conditionally or unconditionally update PC with branch target
-7. Load_Address (Optional, used only by memory loads)
- - Drive tcm_rdaddress and avm_address/control buses
+7. Load (Optional, used only by memory loads)
+ - For Avalon-mm accesses drive avm_read signal
+ - Continue to drive avm_address bus
  - For Avalon-mm accesses remain at this phase until fabric de-asserts avm_waitrequest signal
-8. Load_Data (Optional, used only by memory loads)
- - For Avalon-mm accesses: remain at this phase until fabric asserts avm_readdatavalid signal
+ - For TCM accesses it is data phase so
+ -  For TCM byte and half-word accesses: align and sign-extend or zero-extend Load data
+8. Load_Data (Optional, used only by Avalon-mm memory loads)
+ - Remain at this phase until fabric asserts avm_readdatavalid signal
  - For byte and half-word accesses: align and sign-extend or zero-extend Load data
 9. Writeback/Store
  - For ALU/Shift/Load: write result of the instruction into register file.
@@ -54,14 +60,14 @@ TCM stores                                      - 4
 AVM stores                                      - 4 + wait states (waitrequest='1')
 ALU/Shifter with Rb as the 2nd operand          - 5
 Conditional branches Rb as the 2nd operand      - 5
-TCM loads                                       - 6
+TCM loads                                       - 5
 AVM loads                                       - 6 + wait states (waitrequest='1') + latency (readdatavalid='0')
 
 Synthesis/Fitter results with Balanced target
-Fmax (10CL006YE144C8G) : 142.1 MHz
-Fmax (10CL006YE144C6G) : 183.8 MHz
+Fmax (10CL006YE144C8G) : 142.4 MHz
+Fmax (10CL006YE144C6G) : 186.4 MHz
 
-Area (10CL006YE144C8G) : 732 LCs + 1 M9K + 0 DSPs
+Area (10CL006YE144C8G) : 747 LCs + 1 M9K + 0 DSPs
 
 
 

@@ -6,13 +6,11 @@ entity n2alu is
  generic (DATA_WIDTH : natural);
  port (
   clk        : in  std_logic;
-  start      : in  boolean;
   op         : in  natural range 0 to 15;
   a          : in  unsigned(DATA_WIDTH-1 downto 0);
   b          : in  unsigned(DATA_WIDTH-1 downto 0);
-  -- results are available on the next clock after start
+  -- results are available on the next clock after inputs
   result     : out unsigned(DATA_WIDTH-1 downto 0);
-  agu_result : out unsigned(DATA_WIDTH-1 downto 0); -- available on the next clock after start
   cmp_result : buffer boolean                       -- for branches
  );
 end entity n2alu;
@@ -44,8 +42,6 @@ begin
    variable logic_op : natural range 0 to 3;
   begin
     if rising_edge(clk) then
-      if start then
-
         logic_op := op mod 4;
         case logic_op is
           when ALU_OP_AND mod 4 => logic_r <= a and b;
@@ -71,8 +67,6 @@ begin
             ne_bytes(k) <= '1';
           end if;
         end loop;
-
-      end if;
     end if;
   end process;
 
@@ -92,10 +86,9 @@ begin
     addsub_r(DATA_WIDTH)='1' when ALU_OP_CMPLTU mod 8,
     addsub_r(0)='1'          when others;
 
-  agu_result <= addsub_r(DATA_WIDTH-1 downto 0);
   result <=
     logic_r            when op_reg < ALU_OP_ADD else
     to_uns(cmp_result) when op_reg > ALU_OP_SUB else
-    agu_result;
+    addsub_r(DATA_WIDTH-1 downto 0);
 
 end architecture a;

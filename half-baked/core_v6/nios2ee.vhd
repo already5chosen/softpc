@@ -64,6 +64,8 @@ architecture a of nios2ee is
 
   signal PH_Execute : boolean;
   -- Process operands by ALU/AGU/Shifter
+  -- Drive tcm_rdaddress
+  -- Start to drive other address buses, but don't assert control signals yet
   -- Latch writedata
   -- finish all instructions except conditional branches and memory accesses
 
@@ -72,15 +74,19 @@ architecture a of nios2ee is
   -- Conditionally or unconditionally update PC with branch target
   -- This phase overlaps with PH_Fetch of the next instruction
 
-  signal PH_Load_Address : boolean;
+  signal PH_Load : boolean;
   -- [Optional] used only by memory loads
-  -- Drive tcm_rdaddress&avm_address/control buses
-  -- For Avalon-mm accesses remain at this phase until fabric de-asserts avm_waitrequest signal
+  -- For Avalon-mm accesses it is address phase
+  --  continue to drive avm_address bus
+  --  assert avm_read signal
+  --  remain at this phase until fabric de-asserts avm_waitrequest signal
+  -- For TCM accesses it is data phase
+  --  For TCM byte and half-word accesses align and sign-extend or zero-extend Load data
 
   signal PH_Load_Data : boolean;
-  -- [Optional] used only by memory loads
+  -- [Optional] used only by Avalon-mm memory loads
   -- For byte and half-word accesses align and sign-extend or zero-extend Load data
-  -- For Avalon-mm accesses remain at this phase until fabric asserts avm_readdatavalid signal
+  -- Remain at this phase until fabric asserts avm_readdatavalid signal
 
   subtype u32 is unsigned(31 downto 0);
   signal pc     : unsigned(TCM_ADDR_WIDTH-1 downto 2);
@@ -90,13 +96,13 @@ architecture a of nios2ee is
   -- instruction decode signals
   signal instr_s2 : unsigned(31 downto 6);
   -- alias instr_op    : unsigned(5  downto 0) is tcm_readdata( 5 downto  0);
-  alias instr_imm16 : unsigned(15 downto 0) is instr_s2(21 downto  6); -- I-type
-  alias instr_b     : unsigned(4  downto 0) is instr_s2(26 downto 22); -- I-type and R-type
-  alias instr_a     : unsigned(4  downto 0) is instr_s1(31 downto 27); -- I-type and R-type
+  alias instr_s2_imm16 : unsigned(15 downto 0) is instr_s2(21 downto  6); -- I-type
+  alias instr_s2_b     : unsigned(4  downto 0) is instr_s2(26 downto 22); -- I-type and R-type
+  alias instr_s1_a     : unsigned(4  downto 0) is instr_s1(31 downto 27); -- I-type and R-type
   -- alias instr_imm5  : unsigned(4  downto 0) is tcm_readdata(10 downto  6); -- R-type
   -- alias instr_opx   : unsigned(5  downto 0) is tcm_readdata(16 downto 11); -- R-type
-  alias instr_c     : unsigned(4  downto 0) is instr_s2(21 downto 17); -- R-type
-  alias instr_imm26 : unsigned(25 downto 0) is instr_s2(31 downto  6); -- J-type
+  alias instr_s2_c     : unsigned(4  downto 0) is instr_s2(21 downto 17); -- R-type
+  alias instr_s2_imm26 : unsigned(25 downto 0) is instr_s2(31 downto  6); -- J-type
 
   signal r_type, writeback_ex, is_call, is_next_pc, is_br, is_b_zero, is_srcreg_b : boolean;
   signal jump_class   : jump_class_t;
@@ -120,8 +126,9 @@ architecture a of nios2ee is
   signal rf_wraddr, rf_rdaddr : natural range 0 to 31;
   signal dstreg_wren, result_sel_alu : boolean;
 
-  alias rf_readdata_h : unsigned(15 downto 0) is rf_readdata(15 downto 0);
-  alias rf_readdata_b : unsigned(7 downto 0)  is rf_readdata(7 downto 0);
+  alias rf_storedata_w : unsigned(31 downto 0) is rf_readdata(31 downto 0);
+  alias rf_storedata_h : unsigned(15 downto 0) is rf_readdata(15 downto 0);
+  alias rf_storedata_b : unsigned(7 downto 0)  is rf_readdata(7 downto 0);
 
   -- memory access signals
   signal is_tcm, is_tcm_reg : boolean;
@@ -131,6 +138,7 @@ architecture a of nios2ee is
   signal byteenable : std_logic_vector(3 downto 0);
   signal dm_address : std_logic_vector(CPU_ADDR_WIDTH-1 downto 0); -- 8-bit bytes
   signal dm_write   : std_logic;
+  signal agu_result_reg_bi : unsigned(1 downto 0); -- LS bits of agu_resulr
   signal readdata_bi : natural range 0 to 3; -- byte index of LS byte of load result in dm_readdata
 
 begin
@@ -172,13 +180,11 @@ begin
    generic map (DATA_WIDTH => 32)
    port map (
     clk    => clk        , -- in  std_logic;
-    start  => PH_Execute , -- in  boolean;
     op     => alu_op     , -- in  natural range 0 to 15;
     a      => reg_a      , -- in  unsigned(DATA_WIDTH-1 downto 0);
     b      => reg_b      , -- in  unsigned(DATA_WIDTH-1 downto 0);
     -- results are available on the next clock after start
     result     => alu_result, -- out unsigned(DATA_WIDTH-1 downto 0)
-    agu_result => agu_result, -- out unsigned(DATA_WIDTH-1 downto 0)
     cmp_result => cmp_result  -- buffer boolean -- for branches
    );
 
@@ -213,7 +219,7 @@ begin
     jump_class    => jump_class,                            -- in  jump_class_t;
     branch        => PH_Branch,                             -- in  boolean;
     branch_taken  => cmp_result or is_br,                   -- in  boolean;
-    imm26         => instr_imm26,                           -- in  unsigned(25 downto 0);
+    imm26         => instr_s2_imm26,                        -- in  unsigned(25 downto 0);
     reg_a         => rf_readdata,                           -- in  unsigned(31 downto 0);
     addr          => pc,                                    -- out unsigned(TCM_ADDR_WIDTH-1 downto 2)
     nextpc        => nextpc                                 -- out unsigned(31 downto 2)
@@ -225,13 +231,13 @@ begin
       dm_write <= '0';
       dstreg_wren <= false;
 
-      PH_Fetch          <= false;
-      PH_Decode         <= false;
-      PH_Regfile1       <= false;
-      PH_Regfile2       <= false;
-      PH_Execute        <= false;
-      PH_Branch         <= false;
-      PH_Load_Address <= false;
+      PH_Fetch        <= false;
+      PH_Decode       <= false;
+      PH_Regfile1     <= false;
+      PH_Regfile2     <= false;
+      PH_Execute      <= false;
+      PH_Branch       <= false;
+      PH_Load         <= false;
       PH_Load_Data    <= false;
 
       if s_reset then
@@ -240,7 +246,7 @@ begin
         if PH_Fetch then
           if dm_write='1' then
             -- memory store
-            if is_tcm or avm_waitrequest='0' then
+            if is_tcm_reg or avm_waitrequest='0' then
               PH_Decode <= true;
             else
               dm_write <= '1';
@@ -273,13 +279,14 @@ begin
 
         if PH_Execute then
           dstreg_wren <= writeback_ex;
-          writedata <= std_logic_vector(writedata_mux);
           if instr_class=INSTR_CLASS_MEMORY then
+            is_tcm_reg <= is_tcm;
             if mem_op_u(MEM_OP_BIT_STORE)='1' then
               dm_write <= '1';
               PH_Fetch <= true;
             else
-              PH_Load_Address <= true;
+              -- memory loads
+              PH_Load <= true;
             end if;
           else
             PH_Fetch <= true;
@@ -289,18 +296,20 @@ begin
           end if;
         end if;
 
-        if PH_Load_Address then
-          is_tcm_reg <= is_tcm;
-          PH_Load_Address <= true;
-          if is_tcm or avm_waitrequest='0' then
-            PH_Load_Address <= false;
+        if PH_Load then
+          if is_tcm_reg then
+            dstreg_wren <= true;
+            PH_Fetch <= true;
+          elsif avm_waitrequest='0' then
             -- TODO - case of avm read with latency=0
             PH_Load_Data <= true;
+          else
+            PH_Load <= true;
           end if;
         end if;
 
         if PH_Load_Data then
-          if is_tcm_reg or avm_readdatavalid='1' then
+          if avm_readdatavalid='1' then
             dstreg_wren <= true;
             PH_Fetch <= true;
           else
@@ -324,6 +333,10 @@ begin
 
       if PH_Regfile1 then
         reg_a <= rf_readdata; -- latch register A
+      end if;
+
+      if PH_Execute then
+        writedata <= std_logic_vector(writedata_mux); -- latch writedata (read from register B)
       end if;
 
       -- register file write
@@ -354,7 +367,7 @@ begin
            h_sel := sel_imm;
         else
            l_sel := sel_imm;
-           if imm16_class = IMM16_CLASS_s16 and instr_imm16(15)='1' then
+           if imm16_class = IMM16_CLASS_s16 and instr_s2_imm16(15)='1' then
              h_sel := sel_1;
            else
              h_sel := sel_0;
@@ -366,13 +379,13 @@ begin
       end if;
 
       case l_sel is
-        when sel_imm => reg_b(15 downto 0) <= instr_imm16;
+        when sel_imm => reg_b(15 downto 0) <= instr_s2_imm16;
         when sel_rf  => reg_b(15 downto 0) <= rf_readdata(15 downto 0);
         when sel_0   => reg_b(15 downto 0) <= (others => '0');
       end case;
 
       case h_sel is
-        when sel_imm => reg_b(31 downto 16) <= instr_imm16;
+        when sel_imm => reg_b(31 downto 16) <= instr_s2_imm16;
         when sel_rf  => reg_b(31 downto 16) <= rf_readdata(31 downto 16);
         when sel_0   => reg_b(31 downto 16) <= (others => '0');
         when sel_1   => reg_b(31 downto 16) <= (others => '1');
@@ -380,9 +393,8 @@ begin
     end if;
   end process;
 
-  rf_rdaddr <= to_integer(instr_a) when PH_Decode else to_integer(instr_b);
-  -- rf_wraddr <= to_integer(instr_c) when r_type else 31 when is_dst_ra else to_integer(instr_b);
-  rf_wraddr <= 31 when is_call else to_integer(instr_c) when r_type else to_integer(instr_b);
+  rf_rdaddr <= to_integer(instr_s1_a) when PH_Decode else to_integer(instr_s2_b);
+  rf_wraddr <= 31 when is_call else to_integer(instr_s2_c) when r_type else to_integer(instr_s2_b);
   rf_wrnextpc <= is_call or is_next_pc;
   rf:entity work.n2register_file
    port map (
@@ -401,50 +413,56 @@ begin
 
 
   -- data bus address/writedata/byteenable/readdata_bi
+  agu_result <= unsigned(resize(signed(instr_s2_imm16), 32)) + reg_a;
+  process (clk)
+  begin
+    if rising_edge(clk) then
+      agu_result_reg_bi <= agu_result(1 downto 0);
+    end if;
+  end process;
+
   process (all)
-    variable addr : u32;
     variable bi : natural range 0 to 3;
   begin
-    addr := agu_result;
-    bi := to_integer(addr) mod 4;
+    bi := to_integer(agu_result_reg_bi) mod 4;
     byteenable <= (others => '0');
     case mem_op_i mod 4 is
       when MEM_OP_B =>
         byteenable(bi) <= '1';
-        writedata_mux <= rf_readdata_b & rf_readdata_b & rf_readdata_b & rf_readdata_b;
+        writedata_mux <= rf_storedata_b & rf_storedata_b & rf_storedata_b & rf_storedata_b;
         readdata_bi <= bi;
 
       when MEM_OP_H =>
         byteenable((bi/2)*2+0) <= '1';
         byteenable((bi/2)*2+1) <= '1';
-        writedata_mux <= rf_readdata_h & rf_readdata_h;
+        writedata_mux <= rf_storedata_h & rf_storedata_h;
         readdata_bi <= (bi/2)*2;
 
       when others =>
         byteenable <= (others => '1');
-        writedata_mux <= rf_readdata;
+        writedata_mux <= rf_storedata_w;
         readdata_bi <= 0;
     end case;
 
-    dm_address(CPU_ADDR_WIDTH-1 downto 2) <= std_logic_vector(addr(CPU_ADDR_WIDTH-1 downto 2));
+    dm_address(CPU_ADDR_WIDTH-1 downto 2) <= std_logic_vector(agu_result(CPU_ADDR_WIDTH-1 downto 2));
     dm_address(1 downto 0) <= (others => '0');
 
-    is_tcm <= (to_integer(addr)/2**TCM_ADDR_WIDTH)=TCM_REGION_IDX;
+    is_tcm <= (to_integer(agu_result)/2**TCM_ADDR_WIDTH)=TCM_REGION_IDX;
   end process;
 
   tcm_rdaddress <=
-    dm_address(TCM_ADDR_WIDTH-1 downto 2) when PH_Load_Address else
+    dm_address(TCM_ADDR_WIDTH-1 downto 2) when PH_Execute else
     std_logic_vector(pc);
   tcm_wraddress  <= dm_address(TCM_ADDR_WIDTH-1 downto 2);
   tcm_byteenable <= byteenable;
   tcm_writedata  <= writedata;
-  tcm_write <= dm_write when is_tcm else '0';
+  tcm_write      <= dm_write when is_tcm_reg else '0';
 
   avm_address    <= dm_address;
   avm_byteenable <= byteenable;
   avm_writedata  <= writedata;
-  avm_write      <= dm_write when not is_tcm else '0';
-  avm_read       <= '1' when PH_Load_Address and not is_tcm else '0';
+  avm_write      <= dm_write when not is_tcm_reg else '0';
+  avm_read       <= '1' when PH_Load and not is_tcm_reg  else '0';
 
   dm_readdata <= tcm_readdata when is_tcm_reg else avm_readdata;
 
