@@ -223,7 +223,7 @@ begin
     branch        => PH_Branch,                             -- in  boolean;
     branch_taken  => cmp_result or is_br,                   -- in  boolean;
     imm26         => instr_s2_imm26,                        -- in  unsigned(25 downto 0);
-    reg_a         => rf_readdata,                           -- in  unsigned(31 downto 0);
+    reg_a         => reg_a,                                 -- in  unsigned(31 downto 0);
     addr          => pc,                                    -- out unsigned(TCM_ADDR_WIDTH-1 downto 2)
     nextpc        => nextpc                                 -- out unsigned(31 downto 2)
    );

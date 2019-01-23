@@ -28,6 +28,7 @@ architecture a of n2program_counter is
   constant TCM_REGION_SZ : natural := 2**TCM_ADDR_WIDTH;
   constant TCM_BASE_ADDR : natural := (TCM_REGION_SZ/4)*TCM_REGION_IDX;
   signal addr_reg, taken_branch_addr : unsigned(addr'range);
+  signal indirect_branch : boolean;
 begin
   process (clk)
     variable immx : unsigned(31 downto 0);
@@ -36,6 +37,7 @@ begin
     if rising_edge(clk) then
 
       addr_reg <= addr;
+      indirect_branch <= false;
 
       if calc_nextpc then
         nextpc <= resize(addr_reg, 30) + 1 + TCM_BASE_ADDR;
@@ -49,7 +51,8 @@ begin
         addr_reg_ex := resize(addr_reg, 30);
         case jump_class is
           when JUMP_CLASS_DIRECT   => addr_reg_ex(27 downto 2) := imm26; -- direct jumps and calls
-          when JUMP_CLASS_INDIRECT => addr_reg_ex := reg_a(31 downto 2); -- indirect jumps, calls and returns
+          when JUMP_CLASS_INDIRECT => addr_reg_ex := nextpc;             -- indirect jumps, calls and returns
+                                      indirect_branch <= true;
           when JUMP_CLASS_OTHERS   => addr_reg_ex := nextpc;
         end case;
         addr_reg <= addr_reg_ex(addr'range);
@@ -58,10 +61,14 @@ begin
 
       if s_reset then
         addr_reg <= to_unsigned((RESET_ADDR mod TCM_REGION_SZ)/4, addr'length);
+        indirect_branch <= false;
       end if;
     end if;
   end process;
 
-  addr <= taken_branch_addr(addr'range) when branch and branch_taken else addr_reg;
+  addr <=
+    reg_a(addr'range)             when indirect_branch else
+    taken_branch_addr(addr'range) when branch and branch_taken else
+    addr_reg;
 
 end architecture a;
