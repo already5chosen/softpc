@@ -64,15 +64,17 @@ architecture a of nios2ee is
 
   signal PH_Execute : boolean;
   -- Process operands by ALU/AGU/Shifter
-  -- Drive tcm_rdaddress
-  -- Start to drive other address buses, but don't assert control signals yet
-  -- Latch writedata
   -- finish all instructions except conditional branches and memory accesses
 
   signal PH_Branch  : boolean;
   -- [Optional] used only by PC-relative branches
   -- Conditionally or unconditionally update PC with branch target
   -- This phase overlaps with PH_Fetch of the next instruction
+
+  signal PH_Memory : boolean;
+  -- Drive tcm_rdaddress
+  -- Start to drive other address buses, but don't assert control signals yet
+  -- Latch writedata
 
   signal PH_Load : boolean;
   -- [Optional] used only by memory loads
@@ -239,6 +241,7 @@ begin
       PH_Regfile2     <= false;
       PH_Execute      <= false;
       PH_Branch       <= false;
+      PH_Memory       <= false;
       PH_Load         <= false;
       PH_Load_Data    <= false;
 
@@ -270,6 +273,8 @@ begin
             PH_Branch <= true;
           elsif is_srcreg_b and not is_b_zero then
             PH_Regfile2 <= true;
+          elsif instr_class=INSTR_CLASS_MEMORY then
+            PH_Memory  <= true;
           else
             PH_Execute  <= true;
           end if;
@@ -285,20 +290,20 @@ begin
 
         if PH_Execute then
           dstreg_wren <= writeback_ex;
-          if instr_class=INSTR_CLASS_MEMORY then
-            is_tcm_reg <= is_tcm;
-            if mem_op_u(MEM_OP_BIT_STORE)='1' then
-              dm_write <= '1';
-              PH_Fetch <= true;
-            else
-              -- memory loads
-              PH_Load <= true;
-            end if;
-          else
+          PH_Fetch <= true;
+          if instr_class=INSTR_CLASS_BRANCH then
+            PH_Branch <= true;
+          end if;
+        end if;
+
+        if PH_Memory then
+          is_tcm_reg <= is_tcm;
+          if mem_op_u(MEM_OP_BIT_STORE)='1' then
+            dm_write <= '1';
             PH_Fetch <= true;
-            if instr_class=INSTR_CLASS_BRANCH then
-              PH_Branch <= true;
-            end if;
+          else
+            -- memory loads
+            PH_Load <= true;
           end if;
         end if;
 
@@ -341,7 +346,7 @@ begin
         reg_a <= rf_readdata; -- latch register A
       end if;
 
-      if PH_Execute then
+      if PH_Memory then
         writedata <= std_logic_vector(writedata_mux); -- latch writedata (read from register B)
       end if;
 
@@ -471,7 +476,7 @@ begin
   end process;
 
   tcm_rdaddress <=
-    dm_address(TCM_ADDR_WIDTH-1 downto 2) when PH_Execute else
+    dm_address(TCM_ADDR_WIDTH-1 downto 2) when PH_Memory else
     std_logic_vector(pc);
   tcm_wraddress  <= dm_address(TCM_ADDR_WIDTH-1 downto 2);
   tcm_byteenable <= byteenable;
