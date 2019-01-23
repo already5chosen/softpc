@@ -91,6 +91,7 @@ architecture a of nios2ee is
   subtype u32 is unsigned(31 downto 0);
   signal pc     : unsigned(TCM_ADDR_WIDTH-1 downto 2);
   signal nextpc : unsigned(31 downto 2);
+  signal is_call_s1 : boolean;
 
   alias instr_s1 : u32 is tcm_readdata;
   -- instruction decode signals
@@ -166,8 +167,8 @@ begin
     is_b_zero    => is_b_zero,    -- out boolean;
     is_br        => is_br,        -- out boolean; -- unconditional branch
     writeback_ex => writeback_ex, -- out boolean; -- true when destination register is updated with result of PH_execute stage
-    is_call      => is_call,      -- out boolean; -- active for call instructions on the next clock after start
-    is_next_pc   => is_next_pc,   -- out boolean; -- active for nextpc instruction on the next clock after start
+    is_call      => is_call,      -- out boolean; -- CALL/CALLR
+    is_next_pc   => is_next_pc,   -- out boolean; -- NEXTPC
     imm16_class  => imm16_class,  -- out imm16_class_t;
     shifter_op   => shifter_op,   -- out natural range 0 to 7;  -- shift/rotate unit internal opcode
     mem_op       => mem_op_i,     -- out natural range 0 to 15; -- memory(LSU) unit internal opcode
@@ -230,6 +231,7 @@ begin
     if rising_edge(clk) then
       dm_write <= '0';
       dstreg_wren <= false;
+      is_call_s1  <= false;
 
       PH_Fetch        <= false;
       PH_Decode       <= false;
@@ -260,7 +262,7 @@ begin
         PH_Regfile1 <= PH_Decode;
 
         if PH_Regfile1 then
-
+          is_call_s1 <= is_call;
           if jump_class/=JUMP_CLASS_OTHERS then
             PH_Fetch <= true; -- last execution stage of direct and inderect jumps
           elsif is_br then
@@ -275,6 +277,10 @@ begin
 
         if PH_Regfile2 then
           PH_Execute <= true;
+        end if;
+
+        if is_call_s1 then
+          dstreg_wren <= true;
         end if;
 
         if PH_Execute then
@@ -341,6 +347,14 @@ begin
 
       -- register file write
       result_sel_alu <= instr_class=INSTR_CLASS_ALU;
+      if is_call then
+        rf_wraddr <= 31;
+      elsif r_type then
+        rf_wraddr <= to_integer(instr_s2_c);
+      else
+        rf_wraddr <= to_integer(instr_s2_b);
+      end if;
+      rf_wrnextpc <= is_call or is_next_pc;
 
     end if;
   end process;
@@ -394,8 +408,6 @@ begin
   end process;
 
   rf_rdaddr <= to_integer(instr_s1_a) when PH_Decode else to_integer(instr_s2_b);
-  rf_wraddr <= 31 when is_call else to_integer(instr_s2_c) when r_type else to_integer(instr_s2_b);
-  rf_wrnextpc <= is_call or is_next_pc;
   wbm:entity work.n2writeback_mux
    port map (
     wraddr      => rf_wraddr,      -- in  natural range 0 to 31;

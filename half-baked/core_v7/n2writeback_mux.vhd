@@ -29,5 +29,5 @@ begin
       wrdata <= wrdata1;
     end if;
   end process;
-  wren <= (wraddr /= 0) and (wrnextpc or dstreg_wren);
+  wren <= (wraddr /= 0) and dstreg_wren;
 end architecture a;
