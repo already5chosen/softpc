@@ -7,12 +7,8 @@ entity n2register_file is
   clk         : in  std_logic;
   rdaddr      : in  natural range 0 to 31;
   wraddr      : in  natural range 0 to 31;
-  nextpc      : in  unsigned(31 downto 2);
-  wrnextpc    : in  boolean;
-  wrdata0     : in  unsigned(31 downto 0);
-  wrdata1     : in  unsigned(31 downto 0);
-  wrdata_sel0 : in  boolean;
-  dstreg_wren : in  boolean;
+  wrdata      : in  unsigned(31 downto 0);
+  wren        : in  boolean;
   -- read result q available on the next clock after rdaddr
   q : out unsigned(31 downto 0)
  );
@@ -26,31 +22,15 @@ architecture a of n2register_file is
   attribute ramstyle of rf : signal is "no_rw_check";
 begin
   process (clk)
-   variable wren   : boolean;
-   variable wrdata : u32;
   begin
     if rising_edge(clk) then
       -- read
       q <= rf(rdaddr);
 
       -- write
-      wren := dstreg_wren and (wraddr/=0);
-      if wrdata_sel0 then
-        wrdata := wrdata0;
-      else
-        wrdata := wrdata1;
-      end if;
-
-      if wrnextpc then
-        wren := true;
-        wrdata(31 downto 2) := nextpc;
-        wrdata(1 downto 0)  := (others => '0');
-      end if;
-
       if wren then
         rf(wraddr) <= wrdata;
       end if;
-
     end if;
   end process;
 

@@ -6,6 +6,7 @@ set_global_assignment -name VHDL_FILE [file join $::quartus(qip_path) "n2shift_a
 set_global_assignment -name VHDL_FILE [file join $::quartus(qip_path) "n2byte_shifter.vhd"]
 set_global_assignment -name VHDL_FILE [file join $::quartus(qip_path) "n2bit_shifter.vhd"]
 set_global_assignment -name VHDL_FILE [file join $::quartus(qip_path) "n2register_file.vhd"]
+set_global_assignment -name VHDL_FILE [file join $::quartus(qip_path) "n2writeback_mux.vhd"]
 set_global_assignment -name VHDL_FILE [file join $::quartus(qip_path) "n2program_counter.vhd"]
 set_global_assignment -name VHDL_FILE [file join $::quartus(qip_path) "n2opcodes.vhd"]
 set_global_assignment -name VHDL_FILE [file join $::quartus(qip_path) "alu_opcodes.vhd"]

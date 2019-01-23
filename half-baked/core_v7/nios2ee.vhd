@@ -122,9 +122,9 @@ architecture a of nios2ee is
 
   -- register file access
   signal rf_wrnextpc : boolean;
-  signal rf_readdata : u32;
+  signal rf_readdata, rf_wrdata : u32;
   signal rf_wraddr, rf_rdaddr : natural range 0 to 31;
-  signal dstreg_wren, result_sel_alu : boolean;
+  signal dstreg_wren, result_sel_alu, rf_wren : boolean;
 
   alias rf_storedata_w : unsigned(31 downto 0) is rf_readdata(31 downto 0);
   alias rf_storedata_h : unsigned(15 downto 0) is rf_readdata(15 downto 0);
@@ -396,10 +396,8 @@ begin
   rf_rdaddr <= to_integer(instr_s1_a) when PH_Decode else to_integer(instr_s2_b);
   rf_wraddr <= 31 when is_call else to_integer(instr_s2_c) when r_type else to_integer(instr_s2_b);
   rf_wrnextpc <= is_call or is_next_pc;
-  rf:entity work.n2register_file
+  wbm:entity work.n2writeback_mux
    port map (
-    clk         => clk,            -- in  std_logic;
-    rdaddr      => rf_rdaddr,      -- in  natural range 0 to 31;
     wraddr      => rf_wraddr,      -- in  natural range 0 to 31;
     nextpc      => nextpc,         -- in  unsigned(31 downto 2);
     wrnextpc    => rf_wrnextpc,    -- in  boolean;
@@ -407,6 +405,16 @@ begin
     wrdata1     => sh_result,      -- in  unsigned(31 downto 0);
     wrdata_sel0 => result_sel_alu, -- in  boolean;
     dstreg_wren => dstreg_wren,    -- in  boolean;
+    wrdata      => rf_wrdata,      -- out unsigned(31 downto 0)
+    wren        => rf_wren         -- out boolean
+  );
+  rf:entity work.n2register_file
+   port map (
+    clk         => clk,        -- in  std_logic;
+    rdaddr      => rf_rdaddr,  -- in  natural range 0 to 31;
+    wraddr      => rf_wraddr,  -- in  natural range 0 to 31;
+    wrdata      => rf_wrdata,  -- in  unsigned(31 downto 0);
+    wren        => rf_wren,    -- in  boolean;
     -- read result q available on the next clock after rdaddr
     q => rf_readdata -- out unsigned(31 downto 0)
   );
