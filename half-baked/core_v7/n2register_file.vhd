@@ -18,6 +18,11 @@ architecture a of n2register_file is
   subtype u32 is unsigned(31 downto 0);
   type rf_t is array (natural range <>) of u32;
   signal rf : rf_t(0 to 31);
+
+  signal rf_q, wrdata_reg : u32;
+  signal rdaddr_reg : natural range 0 to 31;
+  signal bypass0, bypass1 : boolean;
+
   attribute ramstyle : string;
   attribute ramstyle of rf : signal is "no_rw_check";
 begin
@@ -25,13 +30,24 @@ begin
   begin
     if rising_edge(clk) then
       -- read
-      q <= rf(rdaddr);
+      rf_q <= rf(rdaddr);
 
       -- write
       if wren then
         rf(wraddr) <= wrdata;
       end if;
+
+      -- bypass registers
+      rdaddr_reg <= rdaddr; -- for 0-clock bypass
+      wrdata_reg <= wrdata; -- for 1-clock bypass
+      bypass1 <= wren and rdaddr=wraddr; -- for 1-clock bypass
     end if;
   end process;
+
+  bypass0 <= wren and rdaddr_reg=wraddr;
+  q <=
+    wrdata     when bypass0 else -- 0-clock bypass
+    wrdata_reg when bypass1 else -- 1-clock bypass
+    rf_q;
 
 end architecture a;

@@ -14,7 +14,7 @@ entity n2shift_align is
   a             : in  unsigned;
   b             : in  unsigned;
   -- align/sign-extend load data inputs
-  ld_op_i       : in  natural range 0 to 15; -- memory(LSU) unit internal opcode
+  ld_op_i       : in  natural range 0 to 7;  -- memory(LSU) unit internal opcode
   readdata      : in  unsigned;
   readdata_bi   : in  unsigned; -- byte index of LS byte of load result in dm_readdata
   -- result
@@ -35,14 +35,14 @@ architecture a of n2shift_align is
   signal bysh_op_align, byte_rshift, bysh_rshift, bysh_sign_pos : unsigned(B_WIDTH-4 downto 0);
   signal bish_result, bysh_a : unsigned(a'range);
   signal sh_op_u : unsigned(2 downto 0);  -- unsigned representation of sh_op_i
-  signal ld_op_u : unsigned(3 downto 0);  -- unsigned representation of ld_op_i
+  signal ld_op_u : unsigned(2 downto 0);  -- unsigned representation of ld_op_i
   alias sh_op_shift : std_logic is sh_op_u(SHIFTER_OP_BIT_SHIFT);
   alias sh_op_arith : std_logic is sh_op_u(SHIFTER_OP_BIT_ARITH);
   alias sh_op_left  : std_logic is sh_op_u(SHIFTER_OP_BIT_LEFT);
 begin
 
   sh_op_u <= to_unsigned(sh_op_i, 3);
-  ld_op_u <= to_unsigned(ld_op_i, 4);
+  ld_op_u <= to_unsigned(ld_op_i, 3);
 
   process (clk)
   begin
