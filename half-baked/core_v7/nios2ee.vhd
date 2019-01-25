@@ -77,29 +77,28 @@ architecture a of nios2ee is
 
   signal PH_Load : boolean;
   -- [Optional] used only by memory loads
-  -- For Avalon-mm accesses it is address phase
-  --  continue to drive avm_address bus
+  -- For TCM accesses it is single-clock data acquisition phase
+  -- For Avalon-mm accesses it is whole load state machine consisting of address and data stages
+  -- with each statge lasting from 1 to many clocks
+  -- in Avalon-mm address phase:
+  --  drive avm_address bus
   --  assert avm_read signal
   --  remain at this phase until fabric de-asserts avm_waitrequest signal
-  -- For TCM accesses it is data phase
-  --  For TCM byte and half-word accesses align and sign-extend or zero-extend Load data
-
-  -- signal PH_Load_Data : boolean;
-  -- [Optional] used only by Avalon-mm memory loads
-  -- For byte and half-word accesses align and sign-extend or zero-extend Load data
-  -- Remain at this phase until fabric asserts avm_readdatavalid signal
-
-  signal PH_Branch  : boolean;
-  -- [Optional] used only by PC-relative branches
-  -- Conditionally or unconditionally update PC with branch target
-  -- This phase overlaps with PH_Fetch of the next instruction
+  -- in Avalon-mm data acquisition phase:
+  --  remain at this phase until fabric asserts avm_readdatavalid signal
+  -- Both for TCM and Avalon-mm accesses during last clock of data acquisition phase
+  -- xxx_readdata is forwarded to n2shift_align module in order for alignment and
+  -- zero-extension of sign-extension of byte and half-word accesses
 
   signal Stall_Fetch, Stall_Regfile1, Stall_Memory, Stall_Load, cond_branch : boolean;
-  signal do_Fetch, do_Decode, do_Regfile1, do_Memory : boolean;
+  signal do_Fetch, do_Decode, do_Regfile1, done_Regfile1, do_Memory : boolean;
+
 
   subtype u32 is unsigned(31 downto 0);
   signal pc     : unsigned(TCM_ADDR_WIDTH-1 downto 2);
   signal nextpc : unsigned(31 downto 2);
+  signal iu_branch  : boolean; -- true=instruct program counter block to select instruction address with accordance to iu_taken_branch
+  signal iu_branch_taken : boolean;
 
   alias instr_s1 : u32 is tcm_readdata;
   -- instruction decode signals
@@ -133,10 +132,10 @@ architecture a of nios2ee is
   signal sh_result : u32;
 
   -- register file access
-  signal rf_wrnextpc : boolean;
+  signal rf_wrsel_nextpc : boolean;
   signal rf_readdata, rf_wrdata : u32;
   signal rf_wraddr, rf_rdaddr : natural range 0 to 31;
-  signal dstreg_wren, result_sel_alu, rf_wren : boolean;
+  signal dstreg_wren, rf_wrsel_alu, rf_wren : boolean;
 
   alias rf_storedata_w : unsigned(31 downto 0) is rf_readdata(31 downto 0);
   alias rf_storedata_h : unsigned(15 downto 0) is rf_readdata(15 downto 0);
@@ -218,6 +217,7 @@ begin
    );
 
   -- program counter/jumps/branches
+  iu_branch_taken <= cmp_result or is_br;
   iu:entity work.n2program_counter
    generic map (
     TCM_ADDR_WIDTH => TCM_ADDR_WIDTH,
@@ -229,8 +229,8 @@ begin
     calc_nextpc   => PH_Decode,                             -- in  boolean;
     update_addr   => do_Regfile1,                           -- in  boolean;
     jump_class    => jump_class,                            -- in  jump_class_t;
-    branch        => PH_Branch,                             -- in  boolean;
-    branch_taken  => cmp_result or is_br,                   -- in  boolean;
+    branch        => iu_branch,                             -- in  boolean;
+    branch_taken  => iu_branch_taken,                       -- in  boolean;
     imm26         => instr_s2_imm26,                        -- in  unsigned(25 downto 0);
     reg_a         => reg_a,                                 -- in  unsigned(31 downto 0);
     addr          => pc,                                    -- out unsigned(TCM_ADDR_WIDTH-1 downto 2)
@@ -247,7 +247,7 @@ begin
       Stall_Fetch <= cond_branch;
       if PH_Regfile1 then
         Stall_Fetch <=
-          (jump_class/=JUMP_CLASS_OTHERS) or (instr_class=INSTR_CLASS_BRANCH);
+          (jump_class/=JUMP_CLASS_OTHERS) or (instr_class=INSTR_CLASS_BRANCH) or is_next_pc;
       end if;
     end if;
 
@@ -290,7 +290,7 @@ begin
       end if;
 
       dstreg_wren <= false;
-      PH_Branch   <= false;
+      iu_branch   <= false;
       PH_Regfile2 <= false; -- never stalls
       PH_Execute1 <= false; -- never stalls
       PH_Execute2 <= false; -- never stalls
@@ -321,7 +321,7 @@ begin
           writeback_ex_s <= writeback_ex;
           if jump_class=JUMP_CLASS_OTHERS then
             if is_br then
-              PH_Branch <= true;
+              iu_branch <= true;
             else
               cond_branch <= (instr_class=INSTR_CLASS_BRANCH);
               if is_srcreg_b and not is_b_zero then
@@ -346,7 +346,7 @@ begin
         if PH_Execute1 or PH_Execute2 then
           dstreg_wren <= writeback_ex_s;
           cond_branch <= false;
-          PH_Branch   <= cond_branch;
+          iu_branch   <= cond_branch;
         end if;
 
         if do_Memory then
@@ -387,6 +387,8 @@ begin
       end if;
 
       if do_Regfile1 then
+        -- latch alu or shifter sub-opcode so the same node can be used
+        -- by EUs regardless of timing of execution phase (PH_Execute1 or PH_Execute1)
         if instr_class=INSTR_CLASS_ALU then
           alu_sh_op_reg <= alu_op;
         else
@@ -394,16 +396,20 @@ begin
         end if;
       end if;
 
-      -- register file write
-      result_sel_alu <= instr_class=INSTR_CLASS_ALU;
-      if is_call then
-        rf_wraddr <= 31;
-      elsif r_type then
-        rf_wraddr <= to_integer(instr_s2_c);
-      else
-        rf_wraddr <= to_integer(instr_s2_b);
+      -- register file write address and data selection
+      -- done at the first clock of the 4th stage of the pipeline
+      done_Regfile1 <= do_Regfile1;
+      if done_Regfile1 then
+        rf_wrsel_nextpc <= is_call or is_next_pc;
+        rf_wrsel_alu <= instr_class=INSTR_CLASS_ALU;
+        if is_call then
+          rf_wraddr <= 31;
+        elsif r_type then
+          rf_wraddr <= to_integer(instr_s2_c);
+        else
+          rf_wraddr <= to_integer(instr_s2_b);
+        end if;
       end if;
-      rf_wrnextpc <= is_call or is_next_pc;
 
     end if;
   end process;
@@ -461,10 +467,10 @@ begin
    port map (
     wraddr      => rf_wraddr,      -- in  natural range 0 to 31;
     nextpc      => nextpc,         -- in  unsigned(31 downto 2);
-    wrnextpc    => rf_wrnextpc,    -- in  boolean;
+    wrnextpc    => rf_wrsel_nextpc,    -- in  boolean;
     wrdata0     => alu_result,     -- in  unsigned(31 downto 0);
     wrdata1     => sh_result,      -- in  unsigned(31 downto 0);
-    wrdata_sel0 => result_sel_alu, -- in  boolean;
+    wrdata_sel0 => rf_wrsel_alu, -- in  boolean;
     dstreg_wren => dstreg_wren,    -- in  boolean;
     wrdata      => rf_wrdata,      -- out unsigned(31 downto 0)
     wren        => rf_wren         -- out boolean
