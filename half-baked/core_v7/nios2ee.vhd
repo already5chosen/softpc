@@ -70,9 +70,7 @@ architecture a of nios2ee is
   -- PH_Execute2 is 5th pipeline stage (follows PH_Regfile2)
 
   signal PH_Memory : boolean;
-  -- Drive tcm_rdaddress
-  -- Start to drive other address buses, but don't assert control signals yet
-  -- Latch writedata
+  -- Drive tcm_rdaddress with load instruction address
   -- PH_Memory is 4th pipeline stage (follows PH_Regfile1)
 
   signal PH_Load : boolean;
@@ -137,9 +135,9 @@ architecture a of nios2ee is
   signal rf_wraddr, rf_rdaddr : natural range 0 to 31;
   signal dstreg_wren, rf_wrsel_alu, rf_wren : boolean;
 
-  alias rf_storedata_w : unsigned(31 downto 0) is rf_readdata(31 downto 0);
-  alias rf_storedata_h : unsigned(15 downto 0) is rf_readdata(15 downto 0);
-  alias rf_storedata_b : unsigned(7 downto 0)  is rf_readdata(7 downto 0);
+  alias storedata_w : std_logic_vector(31 downto 0) is std_logic_vector(reg_b(31 downto 0));
+  alias storedata_h : std_logic_vector(15 downto 0) is std_logic_vector(reg_b(15 downto 0));
+  alias storedata_b : std_logic_vector(7 downto 0)  is std_logic_vector(reg_b(7 downto 0));
 
   -- memory access signals
   signal is_tcm, is_tcm_reg : boolean;
@@ -499,18 +497,11 @@ begin
   -- data bus address/writedata/byteenable/readdata_bi
   agu_result <= unsigned(resize(signed(instr_s2_imm16), 32)) + reg_a;
   process (clk)
-    variable writedata_mux : unsigned(31 downto 0);
   begin
     if rising_edge(clk) then
-      case mem_op_i mod 4 is
-        when MEM_OP_B => writedata_mux := rf_storedata_b & rf_storedata_b & rf_storedata_b & rf_storedata_b;
-        when MEM_OP_H => writedata_mux := rf_storedata_h & rf_storedata_h;
-        when others   => writedata_mux := rf_storedata_w;
-      end case;
       if PH_Memory then
         agu_result_reg <= agu_result(CPU_ADDR_WIDTH-1 downto 0);
         ls_op_i   <= mem_op_i mod 8;
-        writedata <= std_logic_vector(writedata_mux); -- latch writedata (read from register B)
       end if;
     end if;
   end process;
@@ -525,15 +516,18 @@ begin
       when MEM_OP_B =>
         byteenable(bi) <= '1';
         readdata_bi <= bi;
+        writedata <= storedata_b & storedata_b & storedata_b & storedata_b;
 
       when MEM_OP_H =>
         byteenable((bi/2)*2+0) <= '1';
         byteenable((bi/2)*2+1) <= '1';
         readdata_bi <= (bi/2)*2;
+        writedata <= storedata_h & storedata_h;
 
       when others =>
         byteenable <= (others => '1');
         readdata_bi <= 0;
+        writedata <= storedata_w;
     end case;
 
     dm_address(CPU_ADDR_WIDTH-1 downto 2) <= std_logic_vector(agu_result_reg(CPU_ADDR_WIDTH-1 downto 2));
