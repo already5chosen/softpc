@@ -90,8 +90,8 @@ architecture a of nios2ee is
   -- xxx_readdata is forwarded to n2shift_align module in order for alignment and
   -- zero-extension of sign-extension of byte and half-word accesses
 
-  signal Stall_Fetch, Stall_Regfile1, Stall_Memory, Stall_Load, cond_branch : boolean;
-  signal do_Fetch, do_Decode, do_Regfile1, done_Regfile1, do_Memory : boolean;
+  signal Stall_Fetch, Stall_Regfile1, cond_branch : boolean;
+  signal do_Fetch, do_Regfile1, done_Regfile1 : boolean;
 
 
   subtype u32 is unsigned(31 downto 0);
@@ -120,7 +120,7 @@ architecture a of nios2ee is
   signal alu_op, mem_op_i : natural range 0 to 15; -- ALU and memory(LSU) unit internal opcode
   signal shifter_op : natural range 0 to 7;  -- shift/rotate unit internal opcode
   signal mem_op_u : unsigned(3 downto 0);    -- unsigned representation of mem_op_i
-  signal ls_op_i  : natural range 0 to 7;    -- LS bits of mem_op_i latched at do_memory
+  signal ls_op_i  : natural range 0 to 7;    -- LS bits of mem_op_i latched at PH_memory
   signal alu_sh_op_reg : natural range 0 to 15; -- ALU or shifter opcode latched at do_Regfile1
   signal reg_a, reg_b : u32;
 
@@ -151,6 +151,7 @@ architecture a of nios2ee is
   signal dm_write, dm_read : std_logic;
   signal agu_result_reg : unsigned(CPU_ADDR_WIDTH-1 downto 0);
   signal readdata_bi : natural range 0 to 3; -- byte index of LS byte of load result in dm_readdata
+  signal avm_write_1st, avm_write_ex, avm_read_1st, avm_read_ex, avm_readdata_wait  : std_logic;
 
 begin
 
@@ -158,8 +159,28 @@ begin
   begin
     if reset='1' then
       s_reset <= true;
+      avm_write_ex  <= '0';
+      avm_read_ex   <= '0';
+      avm_readdata_wait <= '0';
     elsif rising_edge(clk) then
       s_reset <= false;
+      if avm_readdatavalid='1' then
+        avm_readdata_wait <= '0';
+      end if;
+      if avm_waitrequest='0' then
+        avm_write_ex  <= '0';
+        avm_read_ex   <= '0';
+        if (avm_read_ex or avm_read_1st)='1' then
+          avm_readdata_wait <= '1';
+        end if;
+      else
+        if avm_write_1st='1' then
+          avm_write_ex <= '1';
+        end if;
+        if avm_read_1st='1' then
+          avm_read_ex <= '1';
+        end if;
+      end if;
     end if;
   end process;
 
@@ -167,7 +188,7 @@ begin
   d:entity work.n2decode
    port map (
     clk          => clk,          -- in  std_logic;
-    start        => do_Decode,    -- in  boolean;
+    start        => PH_Decode,    -- in  boolean;
     instruction  => instr_s1,     -- in  unsigned(31 downto 0);
     -- decode results are available on the next clock after start
     r_type       => r_type,       -- out boolean;
@@ -244,6 +265,7 @@ begin
     Stall_Fetch <= false;
     if PH_Fetch then
       -- Fetch stalls because previous instruction is control transfer
+      -- or because nextpc has to be available for two more clocks
       Stall_Fetch <= cond_branch;
       if PH_Regfile1 then
         Stall_Fetch <=
@@ -253,30 +275,22 @@ begin
 
     Stall_Regfile1 <= false;
     if PH_Regfile1 then
-      -- Regfile stalls because register A is late result of previous instruction
+      -- Regfile stalls because register A is a late result of previous instruction
       if PH_Execute2 or PH_Load then
         Stall_Regfile1 <= rf_wraddr=instr_s2_a and rf_wraddr/=0;
       end if;
+      -- Also Regfile stalls because of unfinished AVM transaction
+      if (avm_read or avm_write)='1' and avm_waitrequest='1' then
+        Stall_Regfile1 <= true;
+      end if;
+      if avm_readdata_wait='1' and avm_readdatavalid='0' then
+        Stall_Regfile1 <= true;
+      end if;
     end if;
 
-    Stall_Memory <= false;
-    if PH_Memory then
-      -- Memory stalls because of unfinished AVM store
-      Stall_Memory <= avm_write='1' and avm_waitrequest='1';
-    end if;
-
-    Stall_Load <= false;
-    if PH_Load then
-      -- Load stalls for the full duration of AVM readdata wait
-      Stall_Load <= avm_read='1' or avm_readdatavalid='0';
-    end if;
-
-    -- stall at later even stage affects all earlier even stages
-    -- stall at later odd stage affects all earlier off stages
-    do_Fetch    <= PH_Fetch    and (not Stall_Fetch) and (not Stall_Regfile1) and (not Stall_Load);
-    do_Decode   <= PH_Decode   and (not Stall_Memory);
-    do_Regfile1 <= PH_Regfile1 and (not Stall_Regfile1) and (not Stall_Load);
-    do_Memory   <= PH_Memory   and (not Stall_Memory);
+    -- stall at PH_Regfile1 affects PH_Fetch
+    do_Fetch    <= PH_Fetch    and (not Stall_Fetch) and (not Stall_Regfile1);
+    do_Regfile1 <= PH_Regfile1 and not Stall_Regfile1;
 
   end process;
 
@@ -284,22 +298,20 @@ begin
   begin
     if rising_edge(clk) then
 
-      if is_tcm_reg or avm_waitrequest='0' then
-        dm_read  <= '0';
-        dm_write <= '0';
-      end if;
+      dm_read  <= '0';
+      dm_write <= '0';
 
       dstreg_wren <= false;
       iu_branch   <= false;
+      PH_Decode   <= false; -- never stalls
       PH_Regfile2 <= false; -- never stalls
       PH_Execute1 <= false; -- never stalls
+      PH_Memory   <= false; -- never stalls
       PH_Execute2 <= false; -- never stalls
 
       if s_reset then
         PH_Fetch    <= true;
-        PH_Decode   <= false;
         PH_Regfile1 <= false;
-        PH_Memory   <= false;
         PH_Load     <= false;
         cond_branch <= false;
         writeback_ex_s <= false;
@@ -310,8 +322,7 @@ begin
           PH_Decode <= true;
         end if;
 
-        if do_Decode then
-          PH_Decode   <= false;
+        if PH_Decode then
           PH_Regfile1 <= true;
           PH_Fetch    <= true; -- start the next instruction
         end if;
@@ -324,10 +335,10 @@ begin
               iu_branch <= true;
             else
               cond_branch <= (instr_class=INSTR_CLASS_BRANCH);
-              if is_srcreg_b and not is_b_zero then
-                PH_Regfile2 <= true;
-              elsif instr_class=INSTR_CLASS_MEMORY then
+              if instr_class=INSTR_CLASS_MEMORY then
                 PH_Memory <= true;
+              elsif is_srcreg_b and not is_b_zero then
+                PH_Regfile2 <= true;
               else
                 PH_Execute1 <= true;
               end if;
@@ -349,8 +360,7 @@ begin
           iu_branch   <= cond_branch;
         end if;
 
-        if do_Memory then
-          PH_Memory <= false;
+        if PH_Memory then
           is_tcm_reg <= is_tcm;
           if mem_op_u(MEM_OP_BIT_STORE)='1' then
             dm_write <= '1'; -- memory stores
@@ -361,7 +371,7 @@ begin
         end if;
 
         if PH_Load then
-          if is_tcm_reg or (dm_read='0' and avm_readdatavalid='1') then
+          if is_tcm_reg or (avm_readdata_wait='1' and avm_readdatavalid='1') then
             dstreg_wren <= true;
             PH_Load <= false;
           end if;
@@ -378,7 +388,7 @@ begin
     if rising_edge(clk) then
 
       -- register file read address
-      if do_Decode then
+      if PH_Decode then
         instr_s2  <= instr_s1(31 downto 6);
       end if;
 
@@ -497,7 +507,7 @@ begin
         when MEM_OP_H => writedata_mux := rf_storedata_h & rf_storedata_h;
         when others   => writedata_mux := rf_storedata_w;
       end case;
-      if do_Memory then
+      if PH_Memory then
         agu_result_reg <= agu_result(CPU_ADDR_WIDTH-1 downto 0);
         ls_op_i   <= mem_op_i mod 8;
         writedata <= std_logic_vector(writedata_mux); -- latch writedata (read from register B)
@@ -533,7 +543,7 @@ begin
   end process;
 
   tcm_rdaddress <=
-    std_logic_vector(agu_result(TCM_ADDR_WIDTH-1 downto 2)) when do_Memory else
+    std_logic_vector(agu_result(TCM_ADDR_WIDTH-1 downto 2)) when PH_Memory else
     std_logic_vector(pc);
   tcm_wraddress  <= dm_address(TCM_ADDR_WIDTH-1 downto 2);
   tcm_byteenable <= byteenable;
@@ -543,8 +553,10 @@ begin
   avm_address    <= dm_address;
   avm_byteenable <= byteenable;
   avm_writedata  <= writedata;
-  avm_write      <= dm_write when not is_tcm_reg else '0';
-  avm_read       <= dm_read when  not is_tcm_reg else '0';
+  avm_write_1st  <= dm_write when not is_tcm_reg else '0';
+  avm_read_1st   <= dm_read when  not is_tcm_reg else '0';
+  avm_write      <= avm_write_1st or avm_write_ex;
+  avm_read       <= avm_read_1st or avm_read_ex;
 
   dm_readdata <= tcm_readdata when is_tcm_reg else avm_readdata;
 
