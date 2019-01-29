@@ -64,20 +64,28 @@ architecture a of nios2ee is
   -- For rest of instruction - continue to the next stage
   -- PH_Regfile1 is 3rd pipeline stage
 
-  signal PH_Regfile2 : boolean;
-  -- [Optional] used by instructions with 2 register sources except for integer stores
+  signal PH_4 : boolean;
+  -- 4th pipeline stage
+  -- 4th stage has two variants: PH_Execute1 and PH_Regfile2
+  -- Common actions for all variants:
   -- Latch value of register B
+  -- Drive tcm_rdaddress with load instruction address
+
+  signal PH_Regfile2 : boolean;
+  -- [Optional] used by instructions with 2 register sources and by memory access instructions
+  -- Continue to PH_5 (either to PH_Execute2 or to PH_Load)
   -- PH_Regfile2 is 4th pipeline stage (follows PH_Regfile1)
 
-  signal PH_Execute1, PH_Execute2 : boolean;
+  signal PH_Execute : boolean;
   -- Process operands by ALU/AGU/Shifter
   -- finish all instructions except conditional branches and memory accesses
+  -- PH_Execute is a qualifier of 4th and 5th pipeline stages
   -- PH_Execute1 is 4th pipeline stage (follows PH_Regfile1)
   -- PH_Execute2 is 5th pipeline stage (follows PH_Regfile2)
 
-  signal PH_Memory : boolean;
-  -- Drive tcm_rdaddress with load instruction address
-  -- PH_Memory is 4th pipeline stage (follows PH_Regfile1)
+  signal PH_5 : boolean;
+  -- 5th pipeline stage
+  -- 5th stage has two variants: PH_Execute2 and PH_Load
 
   signal PH_Load : boolean;
   -- [Optional] used only by memory loads
@@ -95,7 +103,7 @@ architecture a of nios2ee is
   -- zero-extension of sign-extension of byte and half-word accesses
 
   signal Stall_Fetch, Stall_Regfile1, cond_branch : boolean;
-  signal do_Fetch, do_Regfile1, done_Regfile1 : boolean;
+  signal do_Fetch, do_Regfile1 : boolean;
 
 
   subtype u32 is unsigned(31 downto 0);
@@ -122,9 +130,9 @@ architecture a of nios2ee is
   signal instr_class  : instr_class_t;
   signal imm16_class  : imm16_class_t;
   signal alu_op, mem_op_i : natural range 0 to 15; -- ALU and memory(LSU) unit internal opcode
-  signal shifter_op : natural range 0 to 7;  -- shift/rotate unit internal opcode
-  signal mem_op_u : unsigned(3 downto 0);    -- unsigned representation of mem_op_i
-  signal ls_op_i  : natural range 0 to 7;    -- LS bits of mem_op_i latched at PH_memory
+  signal shifter_op : natural range 0 to 7;     -- shift/rotate unit internal opcode
+  signal mem_op_u : unsigned(3 downto 0);       -- unsigned representation of mem_op_i
+  signal ls_op_i  : natural range 0 to 7;       -- LS bits of mem_op_i latched at PH_4
   signal alu_sh_op_reg : natural range 0 to 15; -- ALU or shifter opcode latched at do_Regfile1
   signal reg_a, reg_b : u32;
 
@@ -228,7 +236,7 @@ begin
   sha:entity work.n2shift_align
    port map (
     clk           => clk,         -- in  std_logic;
-    do_shift      => PH_Execute1 or PH_Execute2,  -- in  boolean;
+    do_shift      => PH_Execute,  -- in  boolean;
     -- shift/rotate inputs
     sh_op_i       => alu_sh_op_reg mod 8,         -- in  natural range 0 to 7; -- shift/rotate unit internal opcode
     a             => reg_a,                       -- in  unsigned;
@@ -262,6 +270,10 @@ begin
     nextpc        => nextpc                                 -- out unsigned(31 downto 2)
    );
 
+  -- define variants of 4th and 5th pipeline stages
+  PH_Regfile2 <= PH_4 and not PH_Execute;
+  PH_Load     <= PH_5 and not PH_Execute;
+
   -- pipeline stalls
   process (all)
   begin
@@ -280,7 +292,7 @@ begin
     Stall_Regfile1 <= false;
     if PH_Regfile1 then
       -- Regfile stalls because register A is a late result of previous instruction
-      if PH_Execute2 or PH_Load then
+      if PH_5 then
         Stall_Regfile1 <= rf_wraddr=instr_s2_a and rf_wraddr/=0;
       end if;
       -- Also Regfile stalls because of unfinished AVM transaction
@@ -311,15 +323,13 @@ begin
       dstreg_wren <= false;
       iu_branch   <= false;
       PH_Decode   <= false; -- never stalls
-      PH_Regfile2 <= false; -- never stalls
-      PH_Execute1 <= false; -- never stalls
-      PH_Memory   <= false; -- never stalls
-      PH_Execute2 <= false; -- never stalls
+      PH_4        <= false; -- never stalls
+      PH_Execute  <= false; -- never stalls
 
       if s_reset then
         PH_Fetch    <= true;
         PH_Regfile1 <= false;
-        PH_Load     <= false;
+        PH_5        <= false;
         cond_branch <= false;
         writeback_ex_s <= false;
       else
@@ -341,27 +351,37 @@ begin
             if is_br then
               iu_branch <= true;
             else
+              PH_4        <= true;
               cond_branch <= (instr_class=INSTR_CLASS_BRANCH);
-              if instr_class=INSTR_CLASS_MEMORY then
-                PH_Memory <= true;
-              elsif is_srcreg_b and not is_b_zero then
-                PH_Regfile2 <= true;
-              else
-                PH_Execute1 <= true;
+              if instr_class/=INSTR_CLASS_MEMORY and (is_b_zero or not is_srcreg_b) then
+                PH_Execute <= true; -- continue to Execute1 variant of PH_4
               end if;
             end if;
           end if;
           if is_call then
-            PH_Execute1 <= true;
+            PH_4       <= true;
+            PH_Execute <= true;
             writeback_ex_s <= true;
           end if;
         end if;
 
         if PH_Regfile2 then
-          PH_Execute2 <= true;
+          is_tcm_reg <= is_tcm;
+          if instr_class=INSTR_CLASS_MEMORY then
+            if mem_op_u(MEM_OP_BIT_STORE)='1' then
+              dm_write <= '1'; -- memory stores
+            else
+              dm_read <= '1';  -- memory loads
+              PH_5    <= true;
+            end if;
+          else
+            PH_5 <= true;
+            PH_Execute <= true;
+          end if;
         end if;
 
-        if PH_Execute1 or PH_Execute2 then
+        if PH_Execute then
+          PH_5 <= false;
           dstreg_wren <= writeback_ex_s;
           if cond_branch then
             cond_branch <= false;
@@ -369,20 +389,10 @@ begin
           end if;
         end if;
 
-        if PH_Memory then
-          is_tcm_reg <= is_tcm;
-          if mem_op_u(MEM_OP_BIT_STORE)='1' then
-            dm_write <= '1'; -- memory stores
-          else
-            dm_read <= '1';  -- memory loads
-            PH_Load <= true;
-          end if;
-        end if;
-
         if PH_Load then
           if is_tcm_reg or (avm_readdata_wait='1' and avm_readdatavalid='1') then
             dstreg_wren <= true;
-            PH_Load <= false;
+            PH_5 <= false;
           end if;
         end if;
 
@@ -416,9 +426,8 @@ begin
       end if;
 
       -- register file write address and data selection
-      -- done at the first clock of the 4th stage of the pipeline
-      done_Regfile1 <= do_Regfile1;
-      if done_Regfile1 then
+      -- done at 4th stage of the pipeline
+      if PH_4 then
         rf_wrsel_nextpc <= is_call or is_next_pc;
         rf_wrsel_alu <= instr_class=INSTR_CLASS_ALU;
         if is_call then
@@ -445,7 +454,7 @@ begin
     variable h_sel : h_sel_t;
   begin
     if rising_edge(clk) then
-      if not done_Regfile1 then
+      if not PH_4 then
         -- type-I instructions except branches or shifts by immediate - the second source operand is immediate
         if is_srcreg_b then
            l_sel := sel_0;
@@ -466,7 +475,7 @@ begin
         h_sel := sel_rf ;
       end if;
 
-      if do_Regfile1 or done_Regfile1 then
+      if do_Regfile1 or PH_4 then
         case l_sel is
           when sel_imm => reg_b(15 downto 0) <= instr_s2_imm16;
           when sel_rf  => reg_b(15 downto 0) <= rf_readdata(15 downto 0);
@@ -515,7 +524,7 @@ begin
   process (clk)
   begin
     if rising_edge(clk) then
-      if PH_Memory then
+      if PH_4 then
         agu_result_reg <= agu_result(CPU_ADDR_WIDTH-1 downto 0);
         ls_op_i   <= mem_op_i mod 8;
       end if;
@@ -553,7 +562,7 @@ begin
   end process;
 
   tcm_rdaddress <=
-    std_logic_vector(agu_result(TCM_ADDR_WIDTH-1 downto 2)) when PH_Memory else
+    std_logic_vector(agu_result(TCM_ADDR_WIDTH-1 downto 2)) when PH_4 else
     std_logic_vector(pc);
   tcm_wraddress  <= dm_address(TCM_ADDR_WIDTH-1 downto 2);
   tcm_byteenable <= byteenable;
