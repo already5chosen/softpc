@@ -47,9 +47,8 @@ begin
   process (clk)
   begin
     if rising_edge(clk) then
-      is_b_zero <= b=0;
-
       if start then
+        is_b_zero <= b=0;
         op_reg <= op;
         r_type <= false;
         case to_integer(op) is

@@ -44,7 +44,7 @@ architecture a of nios2ee is
   -- PH_Fetch is 1st pipeline stage
 
   signal PH_Decode : boolean;
-  -- Calculate NextPC
+  -- Increment Program Counter (PC)
   -- Drive register file address with index of register A
   -- Latch instruction word
   -- PH_Decode is 2nd pipeline stage
@@ -52,10 +52,16 @@ architecture a of nios2ee is
   signal PH_Regfile1 : boolean;
   -- Start to drive register file address with index of register B
   -- Latch value of register A
-  -- For calls - write NextPC to RA
+  -- Latch current PC in nextpc
   -- Calculate branch target of taken PC-relative branches
-  -- For jumps and calls - reload PC and finish
-  -- For rest of instruction -  reload PC with NextPC and continue
+  -- For direct jumps and calls - reload PC
+  -- For indirect jumps and calls - set flag that causes to PC to be reloaded
+  -- on the next clock with latched value of r[A]
+  -- It is last pipeline stage of jumps and unconditional branches
+  -- For calls - continue to the next stage because immediate update of R31=RA
+  --  lead to writeback conflict
+  -- For conditional branchs - stall Fetch stage and continue to the next stage
+  -- For rest of instruction - continue to the next stage
   -- PH_Regfile1 is 3rd pipeline stage
 
   signal PH_Regfile2 : boolean;
@@ -263,11 +269,11 @@ begin
     Stall_Fetch <= false;
     if PH_Fetch then
       -- Fetch stalls because previous instruction is control transfer
-      -- or because nextpc has to be available for two more clocks
       Stall_Fetch <= cond_branch;
       if PH_Regfile1 then
-        Stall_Fetch <=
-          (jump_class/=JUMP_CLASS_OTHERS) or (instr_class=INSTR_CLASS_BRANCH) or is_next_pc;
+        if (jump_class/=JUMP_CLASS_OTHERS) or (instr_class=INSTR_CLASS_BRANCH) then
+          Stall_Fetch <= true;
+        end if;
       end if;
     end if;
 
@@ -278,11 +284,14 @@ begin
         Stall_Regfile1 <= rf_wraddr=instr_s2_a and rf_wraddr/=0;
       end if;
       -- Also Regfile stalls because of unfinished AVM transaction
-      if (avm_read or avm_write)='1' and avm_waitrequest='1' then
-        Stall_Regfile1 <= true;
+      if avm_write='1' and avm_waitrequest='1' then
+        Stall_Regfile1 <= true; -- AVM store, except for last clock
+      end if;
+      if avm_read='1' then
+        Stall_Regfile1 <= true; -- AVM load, address phase
       end if;
       if avm_readdata_wait='1' and avm_readdatavalid='0' then
-        Stall_Regfile1 <= true;
+        Stall_Regfile1 <= true; -- AVM load, data phase, except for last clock
       end if;
     end if;
 
@@ -354,8 +363,10 @@ begin
 
         if PH_Execute1 or PH_Execute2 then
           dstreg_wren <= writeback_ex_s;
-          cond_branch <= false;
-          iu_branch   <= cond_branch;
+          if cond_branch then
+            cond_branch <= false;
+            iu_branch <= true;
+          end if;
         end if;
 
         if PH_Memory then
@@ -397,10 +408,10 @@ begin
       if do_Regfile1 then
         -- latch alu or shifter sub-opcode so the same node can be used
         -- by EUs regardless of timing of execution phase (PH_Execute1 or PH_Execute1)
-        if instr_class=INSTR_CLASS_ALU then
-          alu_sh_op_reg <= alu_op;
-        else
+        if instr_class=INSTR_CLASS_SHIFT then
           alu_sh_op_reg <= shifter_op;
+        else
+          alu_sh_op_reg <= alu_op;
         end if;
       end if;
 
@@ -434,7 +445,7 @@ begin
     variable h_sel : h_sel_t;
   begin
     if rising_edge(clk) then
-      if PH_Regfile1 then
+      if not done_Regfile1 then
         -- type-I instructions except branches or shifts by immediate - the second source operand is immediate
         if is_srcreg_b then
            l_sel := sel_0;
@@ -455,30 +466,35 @@ begin
         h_sel := sel_rf ;
       end if;
 
-      case l_sel is
-        when sel_imm => reg_b(15 downto 0) <= instr_s2_imm16;
-        when sel_rf  => reg_b(15 downto 0) <= rf_readdata(15 downto 0);
-        when sel_0   => reg_b(15 downto 0) <= (others => '0');
-      end case;
+      if do_Regfile1 or done_Regfile1 then
+        case l_sel is
+          when sel_imm => reg_b(15 downto 0) <= instr_s2_imm16;
+          when sel_rf  => reg_b(15 downto 0) <= rf_readdata(15 downto 0);
+          when sel_0   => reg_b(15 downto 0) <= (others => '0');
+        end case;
 
-      case h_sel is
-        when sel_imm => reg_b(31 downto 16) <= instr_s2_imm16;
-        when sel_rf  => reg_b(31 downto 16) <= rf_readdata(31 downto 16);
-        when sel_0   => reg_b(31 downto 16) <= (others => '0');
-        when sel_1   => reg_b(31 downto 16) <= (others => '1');
-      end case;
+        case h_sel is
+          when sel_imm => reg_b(31 downto 16) <= instr_s2_imm16;
+          when sel_rf  => reg_b(31 downto 16) <= rf_readdata(31 downto 16);
+          when sel_0   => reg_b(31 downto 16) <= (others => '0');
+          when sel_1   => reg_b(31 downto 16) <= (others => '1');
+        end case;
+      end if;
     end if;
   end process;
 
-  rf_rdaddr <= to_integer(instr_s1_a) when PH_Decode else to_integer(instr_s2_b);
+  rf_rdaddr <=
+    to_integer(instr_s1_a) when PH_Decode else
+    to_integer(instr_s2_a) when stall_Regfile1 else
+    to_integer(instr_s2_b);
   wbm:entity work.n2writeback_mux
    port map (
     wraddr      => rf_wraddr,      -- in  natural range 0 to 31;
     nextpc      => nextpc,         -- in  unsigned(31 downto 2);
-    wrnextpc    => rf_wrsel_nextpc,    -- in  boolean;
+    wrnextpc    => rf_wrsel_nextpc,-- in  boolean;
     wrdata0     => alu_result,     -- in  unsigned(31 downto 0);
     wrdata1     => sh_result,      -- in  unsigned(31 downto 0);
-    wrdata_sel0 => rf_wrsel_alu, -- in  boolean;
+    wrdata_sel0 => rf_wrsel_alu,   -- in  boolean;
     dstreg_wren => dstreg_wren,    -- in  boolean;
     wrdata      => rf_wrdata,      -- out unsigned(31 downto 0)
     wren        => rf_wren         -- out boolean
