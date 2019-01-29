@@ -28,16 +28,18 @@ architecture a of n2program_counter is
   constant TCM_REGION_SZ : natural := 2**TCM_ADDR_WIDTH;
   constant TCM_BASE_ADDR : natural := (TCM_REGION_SZ/4)*TCM_REGION_IDX;
   signal addr_reg, taken_branch_addr, nextpc_reg : unsigned(addr'range);
-  signal indirect_branch : boolean;
+  signal indirect_jump : boolean;
+  signal addr_reg_ex, direct_jump_target : unsigned(nextpc'range);
 begin
+  addr_reg_ex <= resize(addr_reg, nextpc'length) + TCM_BASE_ADDR;
   process (clk)
     variable immx : unsigned(31 downto 0);
-    variable addr_reg_ex, taken_branch_addr_ex : unsigned(nextpc'range);
+    variable taken_branch_addr_ex : unsigned(nextpc'range);
   begin
     if rising_edge(clk) then
 
       addr_reg <= addr;
-      indirect_branch <= false;
+      indirect_jump <= false;
 
       if calc_nextpc then
         addr_reg <= addr_reg + 1;
@@ -48,31 +50,24 @@ begin
 
       if update_addr then
         nextpc_reg <= addr_reg;
-        addr_reg_ex := resize(addr_reg, nextpc'length) + TCM_BASE_ADDR;
         taken_branch_addr_ex := addr_reg_ex + immx(nextpc'high downto 2); -- calculate address of taken branch
-        case jump_class is
-          when JUMP_CLASS_DIRECT   =>
-            addr_reg_ex(27 downto 2) := imm26; -- direct jumps and calls
-            -- for sake of brevity ignore cases when direct jump/call
-            -- is a last instruction of 256MB segment
-          when JUMP_CLASS_INDIRECT =>
-            indirect_branch <= true;   -- indirect jumps, calls and returns
-          when JUMP_CLASS_OTHERS   =>
-            null;
-        end case;
-        addr_reg <= addr_reg_ex(addr'range);
         taken_branch_addr <= taken_branch_addr_ex(addr'range);
+        indirect_jump <= jump_class=JUMP_CLASS_INDIRECT;   -- indirect jumps, calls and returns
       end if;
 
       if s_reset then
         addr_reg <= to_unsigned((RESET_ADDR mod TCM_REGION_SZ)/4, addr'length);
-        indirect_branch <= false;
+        indirect_jump <= false;
       end if;
     end if;
   end process;
 
+  direct_jump_target <= addr_reg_ex(addr_reg_ex'high downto 28) & imm26; -- direct jumps and calls
+            -- for sake of brevity ignore cases when direct jump/call
+            -- is a last instruction of 256MB segment
   addr <=
-    reg_a(addr'range)             when indirect_branch else
+    addr_reg_ex(addr'range)       when update_addr and jump_class=JUMP_CLASS_DIRECT else
+    reg_a(addr'range)             when indirect_jump else
     taken_branch_addr(addr'range) when branch and branch_taken else
     addr_reg;
 

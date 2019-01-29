@@ -283,7 +283,10 @@ begin
       -- Fetch stalls because previous instruction is control transfer
       Stall_Fetch <= cond_branch;
       if PH_Regfile1 then
-        if (jump_class/=JUMP_CLASS_OTHERS) or (instr_class=INSTR_CLASS_BRANCH) then
+        if jump_class=JUMP_CLASS_INDIRECT then
+          Stall_Fetch <= true;
+        end if;
+        if jump_class=JUMP_CLASS_OTHERS and instr_class=INSTR_CLASS_BRANCH then
           Stall_Fetch <= true;
         end if;
       end if;
@@ -291,9 +294,11 @@ begin
 
     Stall_Regfile1 <= false;
     if PH_Regfile1 then
-      -- Regfile stalls because register A is a late result of previous instruction
-      if PH_5 then
-        Stall_Regfile1 <= rf_wraddr=instr_s2_a and rf_wraddr/=0;
+      if jump_class/=JUMP_CLASS_DIRECT then
+        -- Regfile stalls because register A is a late result of previous instruction
+        if PH_5 then
+          Stall_Regfile1 <= rf_wraddr=instr_s2_a and rf_wraddr/=0;
+        end if;
       end if;
       -- Also Regfile stalls because of unfinished AVM transaction
       if avm_write='1' and avm_waitrequest='1' then
