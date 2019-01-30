@@ -69,10 +69,10 @@ architecture a of nios2ee is
   -- 4th stage has two variants: PH_Execute1 and PH_Regfile2
   -- Common actions for all variants:
   -- Latch value of register B
-  -- Drive tcm_rdaddress with load instruction address
 
   signal PH_Regfile2 : boolean;
   -- [Optional] used by instructions with 2 register sources and by memory access instructions
+  -- Drive tcm_rdaddress with load instruction address
   -- Continue to PH_5 (either to PH_Execute2 or to PH_Load)
   -- PH_Regfile2 is 4th pipeline stage (follows PH_Regfile1)
 
@@ -567,7 +567,7 @@ begin
   end process;
 
   tcm_rdaddress <=
-    std_logic_vector(agu_result(TCM_ADDR_WIDTH-1 downto 2)) when PH_4 else
+    std_logic_vector(agu_result(TCM_ADDR_WIDTH-1 downto 2)) when PH_Regfile2 else
     std_logic_vector(pc);
   tcm_wraddress  <= dm_address(TCM_ADDR_WIDTH-1 downto 2);
   tcm_byteenable <= byteenable;

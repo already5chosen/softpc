@@ -66,7 +66,7 @@ begin
             -- for sake of brevity ignore cases when direct jump/call
             -- is a last instruction of 256MB segment
   addr <=
-    addr_reg_ex(addr'range)       when update_addr and jump_class=JUMP_CLASS_DIRECT else
+    direct_jump_target(addr'range)when update_addr and jump_class=JUMP_CLASS_DIRECT else
     reg_a(addr'range)             when indirect_jump else
     taken_branch_addr(addr'range) when branch and branch_taken else
     addr_reg;
