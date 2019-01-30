@@ -1,75 +1,118 @@
-Variant 6.
-Build for simplicity. I don't expect it to have practically useful ratio between resources and performance.
-The only thing that it will likely be good is a clock rate.
-This variant is close derivative of Variant 1. The difference is AGU implemented separately from ALU and
-AGU result fed to memory address buses without registration, thus making TCM load one clock cycle faster.
+Variant 7.
+That's partially pipelined modification of Variant 6, which, in turn, is a modification of variant 1.
+This variant is not so simple, at least for me. It took me many hours to debug. In part, because of my cowboy approach -
+no simulation, no well-prepared test cases.
+As with variants 1 and 6, I don't expect it to have practically useful ratio between resources and performance.
+As with variants 1 and 6, it can run at pretty high clock rate, but a little lower than the other two or than
+Altera's Nios2e.
+The main reason of impracticality is a combination of resource-intensive full-speed 32-bit execution units
+ and of obsession with Fmax with singe-read-port register file.
+But that's exactly what turned it into interesting HDL coding challenge.
 
-The core is build around full-speed 32-bit ALU and shifter, but features almost no concurrency between pipeline stages.
+The core is build around full-speed 32-bit ALU and shifter and can be seen as semi-pipelined, i.e. in absence of lock
+conditions new instruction is started every two cycles. Up to 3 instructions can be processed simultaneously at various
+stages of execution, but never closer than two stages apart.
 
-Execution phases (They could not be called pipeline stages, because one instruction is processed
-almost to the end, before the next one is started:
-
+Execution stage/phases:
 1. Fetch
- - Start to drive instruction address on tcm_rdaddress.
+ - Drive instruction address (a.k.a. Program Counter=PC) on tcm_rdaddress.
 2. Decode
  - Drive register file address with index of the register A
  - Latch instruction word
- - Calculate NextPC
+ - Increment PC
 3. Regfile1
  - Latch value of the register A
- - Start to drive register file address with index of the register B
- - For calls and NextPC - write NextPC to destination register (rA=r31 or rC)
+ - Drive register file address with index of the register B
  - Calculate branch target of taken PC-relative branches
- - Jumps and calls - reload PC and finish
- - Unconditional Branch - reload PC with NextPC and continue to Fetch+Branch phase (effectively finish)
- - The rest of instruction - reload PC with NextPC and continue
-4. Regfile2 - [Optional]
- - used by instructions that have register B as a source except for integer stores and B=0
+ - For direct jumps and calls - feed Fetch stage with jump target address
+ - For indirect jumps and calls - stall Fetch stage for one clock until jump target address is available in register A latch
+ - For Unconditional Branches - stall Fetch stage for one clock until branch target address is available in branch target register
+---- - For calls and NextPC - write NextPC to destination register (rA=r31 or rC)
+ - For Unconditional Branches - stall Fetch stage until condition is known (no branch prediction)
+ - Decide if instruction continues to stage 4 and what's done there.
+4. Stage 4  [Optional]
+ - All instructions except Jumps and unconditional branches
+ - Stage 4 has 3 variations
+4.1 Execute1 - used by calls and ALU/Shifter/Branch instructions that have immediate as a 2nd source or when B=0
+ - Start ALU/Shifter operations
+4.2 Regfile2 - used by ALU/Shifter/Branch instructions that have non-zero register B as a source
  - Latch value of register B
-5. Execute
- - Start ALU/AGU/Shifter operations
- - Drive tcm_rdaddress and avm_address buses (but not a control signals)
- - Latch writedata
- - All instructions except conditional branches and memory loads continue to writeback phase
-6. Branch [Optional, used only by PC-relative branches]
- - Conditionally or unconditionally update PC with branch target
-7. Load (Optional, used only by memory loads)
- - For Avalon-mm accesses drive avm_read signal
- - Continue to drive avm_address bus
- - For Avalon-mm accesses remain at this phase until fabric de-asserts avm_waitrequest signal
- - For TCM accesses it is data phase so
- -  For TCM byte and half-word accesses: align and sign-extend or zero-extend Load data
-8. Load_Data (Optional, used only by Avalon-mm memory loads)
- - Remain at this phase until fabric asserts avm_readdatavalid signal
+4.3 Memory - used by memory access instructions
+ - Latch value of register B (it's necessary for stores)
+ - Drive tcm_rdaddress with AGU result
+5. Stage 5  [Optional]
+ - Stage 5 has 7 variations
+ - Common Action
+ -  latch AGU result in register
+ -  calculate writedata as a function of register B and memory access width
+5.1 Writeback1 - write ALU/Shifter result or NextPC (for call/NEXTPC) of Execute1 into register file and place it on forwarding network.
+5.2 Branch1 - supply branch condition calculated by Execute1 to the Fetch phase of the next instruction
+5.3 Execute2 - used by ALU/Shifter/Branch instructions that have non-zero register B as a source
+ - Start ALU/Shifter operations
+5.4 TCM Store - used by TCM store instructions
+ - Place AGU result register on tcm_wraddress bus
+ - Place writedata on tcm_writedata bus
+ - Drive TCM write control signals
+5.5 Avalon-mm Store - used by avalon-mm  store instructions
+ - Place AGU result register on avm_wraddress bus
+ - Place writedata on avm_writedata bus
+ - Drive avm write control signals
+ - This stage can last multiple cycles until fabric de-asserts avm_waitrequest signal
+5.6 TCM load - used by TCM load instructions
+ - Latch tcm_readdata
+ - For TCM byte and half-word accesses: align and sign-extend or zero-extend Load data
+5.7 Avalon-mm load - used by avalon-mm load instructions
+ - Place AGU result register on avm_wraddress bus
+ - Proceed with avalon-mm read state machine up to the end.
+   Depending on avm_waitrequest and avm_readdatavalid signals the machine can last from 2 to many clock cycles
+ - On the last cycle latch avm_readdata
  - For byte and half-word accesses: align and sign-extend or zero-extend Load data
-9. Writeback/Store
- - For ALU/Shift/Load: write result of the instruction into register file.
- - For stores: drive memory address/control/*_writedata and *_byteenable buses
- - For Avalon-mm stores: remain at this phase until fabric de-asserts avm_waitrequest signal
+6.  Stage 6 [Optional]
+ - Stage 6 has 2 variations
+6.1 Writeback2 - write ALU/Shifter/Load result of Execute2/Load into register file and place it on forwarding network.
+6.2 Branch2 - supply branch condition calculated by Execute2 to the Fetch phase of the next instruction
 
-Writeback/Store and Branch phases of instruction overlaps with Fetch phase of the next instruction.
+Stalls.
+Stalls can be generated by stages 1, 3 and 5.
+5th-stage stall stops following instructions at stages 3 and 1.
+3rd-stage stall stops following instruction at stages 1.
+
+1st stage stalls.
+1st stage stalls are caused by control transfer instructions.
+Indirect jumps/calls/returns cause  1-clock Fetch stall to the following instruction.
+Unconditional branches cause 1-clock Fetch stall to the following instruction.
+Conditional branches cause 2-clock or 3-clock Fetch stall to the following instruction.
+
+3rd stage stalls.
+3rd stage stalls are caused by result dependencies. When result of the previous instruction
+is available in stage 6 and when it is required as register A source for the following instruction
+then stage 3 generates 1-clock stall.
+
+5th stage stalls.
+5th stage stalls are caused by multicycle avalon-mm instructions. In particular,
+avalon-mm load always takes at least 2 cycles and thus generates at least 1 stall cycle
+to the following instructions.
+
 
 Cycle count:
-Jumps, calls, return                            - 3
+Direct jumps and calls                          - 2
+Indirect jumps, calls and return                - 3
 Unconditional branch                            - 3
-ALU/Shifter with immediate 2nd operand          - 4
-ALU/Shifter with R0 as the 2nd operand          - 4
+ALU/Shifter with immediate 2nd operand          - 2
+ALU/Shifter with R0 as the 2nd operand          - 2
 Conditional branches with R0 as the 2nd operand - 4
-NOPs (cache control instructions etc...)        - 4
-TCM stores                                      - 4
-AVM stores                                      - 4 + wait states (waitrequest='1')
-ALU/Shifter with Rb as the 2nd operand          - 5
+NOPs (cache control instructions etc...)        - 2
+TCM stores                                      - 2
+AVM stores                                      - 2 + wait states (waitrequest='1')
+ALU/Shifter with Rb as the 2nd operand          - 2 (late result)
 Conditional branches Rb as the 2nd operand      - 5
-TCM loads                                       - 5
-AVM loads                                       - 6 + wait states (waitrequest='1') + latency (readdatavalid='0')
+TCM loads                                       - 2 (late result)
+AVM loads                                       - 3 + wait states (waitrequest='1') + latency (readdatavalid='0') (late result)
+-----
+Late result adds 1 clock to execution time of the next instruction when it reads its operand A from register, written by "late" instruction.
 
 Synthesis/Fitter results with Balanced target
-Fmax (10CL006YE144C8G) : 142.4 MHz
-Fmax (10CL006YE144C6G) : 186.4 MHz
+Fmax (10CL006YE144C8G) : 134.4 MHz
+Fmax (10CL006YE144C6G) : 178.3 MHz
 
-Area (10CL006YE144C8G) : 747 LCs + 1 M9K + 0 DSPs
-
-
-
-
-
+Area (10CL006YE144C8G) : 849 LCs + 1 M9K + 0 DSPs
