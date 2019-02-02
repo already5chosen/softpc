@@ -214,7 +214,7 @@ begin
     branch        => PH_Branch,                             -- in  boolean;
     branch_taken  => cmp_result or is_br,                   -- in  boolean;
     imm26         => instr_imm26,                           -- in  unsigned(25 downto 0);
-    reg_a         => rf_readdata,                           -- in  unsigned(31 downto 0);
+    reg_a         => reg_a,                                 -- in  unsigned(31 downto 0);
     addr          => pc,                                    -- out unsigned(TCM_ADDR_WIDTH-1 downto 2)
     nextpc        => nextpc                                 -- out unsigned(31 downto 2)
    );
@@ -255,8 +255,10 @@ begin
 
         if PH_Regfile1 then
 
-          if jump_class/=JUMP_CLASS_OTHERS then
-            PH_Fetch <= true; -- last execution stage of direct and inderect jumps
+          if jump_class=JUMP_CLASS_DIRECT then
+            PH_Decode <= true; -- last execution stage of direct jumps overlaps with first stage of the next instruction
+          elsif jump_class=JUMP_CLASS_INDIRECT then
+            PH_Fetch <= true; -- last execution stage indirect jumps
           elsif is_br then
             PH_Fetch <= true; -- last execution stage of unconditional branch
             PH_Branch <= true;

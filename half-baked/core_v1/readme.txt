@@ -44,7 +44,8 @@ almost to the end, before the next one is started:
 Writeback/Store and Branch phases of instruction overlaps with Fetch phase of the next instruction.
 
 Cycle count:
-Jumps, calls, return                            - 3
+Direct jumps, calls                             - 2
+Indirect jumps, calls, return                   - 3
 Unconditional branch                            - 3
 ALU/Shifter with immediate 2nd operand          - 4
 ALU/Shifter with R0 as the 2nd operand          - 4
@@ -58,10 +59,10 @@ TCM loads                                       - 6
 AVM loads                                       - 6 + wait states (waitrequest='1') + latency (readdatavalid='0')
 
 Synthesis/Fitter results with Balanced target
-Fmax (10CL006YE144C8G) : 142.1 MHz
-Fmax (10CL006YE144C6G) : 183.8 MHz
+Fmax (10CL006YE144C8G) : 142.6 MHz
+Fmax (10CL006YE144C6G) : 186.5 MHz
 
-Area (10CL006YE144C8G) : 732 LCs + 1 M9K + 0 DSPs
+Area (10CL006YE144C8G) : 728 LCs + 1 M9K + 0 DSPs
 
 
 
