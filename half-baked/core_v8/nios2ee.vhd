@@ -113,6 +113,7 @@ architecture a of nios2ee is
 
   -- shifter
   signal sh_result : u32;
+  signal sh_rot16  : std_logic;
 
   -- register file access
   signal rf_wrnextpc : boolean;
@@ -196,7 +197,10 @@ begin
     readdata      => dm_readdata,                 -- in  unsigned;
     readdata_bi   => to_unsigned(readdata_bi, 2), -- in  unsigned; -- byte index of LS byte of load result in dm_readdata
     -- result
-    result        => sh_result    -- out unsigned -- result latency = 1 clock
+    result        => sh_result,   -- out unsigned -- result latency = 1 clock
+    rot16         => sh_rot16     -- out std_logic
+                                  -- '0' - result written to register file as is,
+                                  -- '1' - result rotated by 16 before it is written to register file
    );
 
   -- program counter/jumps/branches
@@ -395,6 +399,9 @@ begin
     wrnextpc    => rf_wrnextpc,    -- in  boolean;
     wrdata0     => alu_result,     -- in  unsigned(31 downto 0);
     wrdata1     => sh_result,      -- in  unsigned(31 downto 0);
+    wrdata1_rot16 => sh_rot16,     -- in  std_logic;
+                                   -- '0' - wrdata1 written to register file as is,
+                                   -- '1' - wrdata1 rotated by 16 before it is written to register file
     wrdata_sel0 => result_sel_alu, -- in  boolean;
     dstreg_wren => dstreg_wren,    -- in  boolean;
     -- read result q available on the next clock after rdaddr

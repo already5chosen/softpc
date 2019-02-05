@@ -18,7 +18,9 @@ entity n2shift_align is
   readdata      : in  unsigned;
   readdata_bi   : in  unsigned; -- byte index of LS byte of load result in dm_readdata
   -- result
-  result        : out unsigned  -- result latency = 1 clock
+  result        : out unsigned; -- result latency = 1 clock
+  rot16         : out std_logic -- '0' - result written to register file as is,
+                                -- '1' - result rotated by 16 before it is written to register file
  );
 end entity n2shift_align;
 
@@ -100,7 +102,7 @@ begin
 
   -- byte shifter (also used for alignment of load data)
   bysh:entity work.n2byte_shifter
-   generic map (DATA_WIDTH => 32, B_WIDTH => 5 )
+   -- generic map (DATA_WIDTH => 32, B_WIDTH => 5 )
    port map (
     op_align => bysh_op_align, -- in  unsigned(1 downto 0); -- '00' - shift/rotate, '10' - 16-bit align, '11' - 8-bit align
     op_shift => bysh_op_shift, -- in  std_logic; -- '0' - rotate,      '1' - shift
@@ -110,7 +112,8 @@ begin
     sign_pos => bysh_sign_pos, -- in  unsigned(B_WIDTH-1    downto 3);
     rshift   => bysh_rshift  , -- in  unsigned(B_WIDTH-1    downto 3);
     b_lsbits => bysh_b_lsbits, -- in  boolean;   -- (b % 8) /= 0, to restore original b for use by left shifts
-    result   => result         -- out unsigned(DATA_WIDTH-1 downto 0)
+    result   => result,        -- out unsigned(DATA_WIDTH-1 downto 0)
+    rot16    => rot16          -- out std_logic -- '0' - result written to register file as is, '1' - result rotated by 16 before it is written to register file
   );
 
 end architecture a;
