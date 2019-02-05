@@ -3,7 +3,6 @@
 library ieee;
 use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
-use work.n2decode_definitions.all;
 
 entity n2shift_align is
  port (
@@ -15,7 +14,7 @@ entity n2shift_align is
                                              -- data[22:0] on the next clock
   b             : in  unsigned(4 downto 0);
   -- align/sign-extend load data inputs
-  ld_op_i       : in  natural range 0 to 15; -- memory(LSU) unit internal opcode
+  ld_op_i       : in  natural range 0 to 7;  -- memory(LSU) unit internal opcode
   readdata      : in  unsigned(31 downto 0);
   readdata_bi   : in  unsigned(1 downto 0);  -- byte index of LS byte of load result in dm_readdata
   -- result
@@ -42,14 +41,14 @@ architecture a of n2shift_align is
   signal bysh_a : unsigned(DATA_WIDTH-1 downto 0);
   signal bish_result : unsigned(HALF_DATA_WIDTH-1 downto 0);
   signal sh_op_u : unsigned(2 downto 0);  -- unsigned representation of sh_op_i
-  signal ld_op_u : unsigned(3 downto 0);  -- unsigned representation of ld_op_i
+  signal ld_op_u : unsigned(2 downto 0);  -- unsigned representation of ld_op_i
   alias sh_op_shift : std_logic is sh_op_u(SHIFTER_OP_BIT_SHIFT);
   alias sh_op_arith : std_logic is sh_op_u(SHIFTER_OP_BIT_ARITH);
   alias sh_op_left  : std_logic is sh_op_u(SHIFTER_OP_BIT_LEFT);
 begin
 
   sh_op_u <= to_unsigned(sh_op_i, 3);
-  ld_op_u <= to_unsigned(ld_op_i, 4);
+  ld_op_u <= to_unsigned(ld_op_i, 3);
 
   process (clk)
   begin

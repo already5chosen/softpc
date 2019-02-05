@@ -30,7 +30,7 @@ begin
 
   rshift <= zero_b-b when op_left='1' else b;
   eff_op_left <= '0' when b=0 else op_left;
-  eff_op_arith <= '0' when a(15)='0' else op_arith;
+  eff_op_arith <= '0' when a(DATA_WIDTH-1)='0' else op_arith;
 
   process(all)
     variable trellis : trellis_t(0 to 3);
@@ -48,13 +48,19 @@ begin
           if eff_op_left='0' then
             trellis(k)(DATA_WIDTH-1 downto DATA_WIDTH-(2**k)) := (others => '0');
             if eff_op_arith='1' then
-              trellis(k+1)(DATA_WIDTH-1 downto DATA_WIDTH-(2**k)) := (others => '1');
+              trellis(k)(DATA_WIDTH-1 downto DATA_WIDTH-(2**k)) := (others => '1');
             end if;
           end if;
         end if;
       end if;
       if op_shift='1' and eff_op_left='1' and b(k)='1' then
-        trellis(k)(DATA_WIDTH-1-(2**k) downto DATA_WIDTH-(2**(k+1))) := (others => '0');
+        if rshift(k)='0' then
+          -- [15:12], [11:10], [9:9]
+          trellis(k)(DATA_WIDTH-9+(2**(k+1)) downto DATA_WIDTH-8+(2**k)) := (others => '0');
+        else
+          -- [11:8], [9:8], [8:8]
+          trellis(k)(DATA_WIDTH-9+(2**k) downto DATA_WIDTH-8) := (others => '0');
+        end if;
       end if;
     end loop;
     result <= trellis(0)(DATA_WIDTH-1 downto 0);
