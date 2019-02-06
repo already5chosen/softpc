@@ -26,9 +26,8 @@ Execution stage/phases:
  - Calculate branch target of taken PC-relative branches
  - For direct jumps and calls - feed Fetch stage with jump target address
  - For indirect jumps and calls - stall Fetch stage for one clock until jump target address is available in register A latch
- - For Unconditional Branches - stall Fetch stage for one clock until branch target address is available in branch target register
----- - For calls and NextPC - write NextPC to destination register (rA=r31 or rC)
- - For Unconditional Branches - stall Fetch stage until condition is known (no branch prediction)
+ - For unconditional Branches - stall Fetch stage for one clock until branch target address is available in branch target register
+ - For conditional Branches - stall Fetch stage until condition is known (no branch prediction)
  - Decide if instruction continues to stage 4 and what's done there.
 4. Stage 4  [Optional]
  - All instructions except Jumps and unconditional branches
