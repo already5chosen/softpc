@@ -40,37 +40,58 @@ architecture a of nios2ee is
   signal s_reset : boolean := true;
   -- processing phases
   signal PH_Fetch : boolean;
+  -- Calculate instruction address as combinatorial function of iu_branch, comparison result and "indirect_jump" flag
   -- Drive instruction address on tcm_rdaddress.
   -- Write result of the previous instruction into register file.
   -- When previous instruction was store - drive memory address/control/*_writedata and *_byteenable buses
   -- For Avalon-mm accesses remain at this phase until fabric de-asserts avm_waitrequest signal
+  -- Proceed to PH_Decode
 
   signal PH_Decode : boolean;
   -- Calculate NextPC
-  -- Drive register file address with index of register A
+  -- Drive register file read addresses with indices of lower halves of registers A and B
   -- Latch instruction word
+  -- Proceed to PH_Regfile1
 
   signal PH_Regfile1 : boolean;
-  -- Start to drive register file address with index of register B
-  -- Latch value of register A
-  -- For calls - write NextPC to RA
+  -- Latch value of lower half of register A
+  -- Latch value of lower half of source operand B
+  -- Update writedata with lower half of register B
   -- Calculate branch target of taken PC-relative branches
-  -- For jumps and calls - reload PC and finish
-  -- For rest of instruction -  reload PC with NextPC and continue
+  -- For direct jumps and calls - drive new instruction address on tcm_rdaddress and proceed to PH_Decode
+  -- For direct calls - write NextPC to RA (R31)
+  -- For NEXTPC instruction - write NextPC to R[C] and proceed to PH_Fetch
+  -- For unconditional branches - set relevant branch flags and proceed to PH_Fetch
+  -- For indirect jumps and calls -
+  --     Drive register file read addresses with indices of both halves of registers A
+  -- For shift/rotate instructions -
+  --     Drive register file read addresses with indices of both halves of registers A
+  -- For ALU/Branch/Memory instructions -
+  --     Drive register file read addresses with indices of upper halves of registers A and B
+  -- For all instructions except direct jumps, calls, NEXTPC and unconditional branches - Proceed to PH_Regfile2
 
   signal PH_Regfile2 : boolean;
-  -- [Optional] used by instructions with 2 register sources except for integer stores
-  -- Latch value of register B
+  -- For indirect jumps and calls -
+  --    Latch values of both halves of registers A
+  --    Set "indirect_jump" flag and proceed to PH_Fetch
+  -- For shift/rotate instructions -
+  --    Latch values of both halves of registers A
+  -- For ALU/Branch/Memory instructions -
+  --    Process latched lower halves of operands by ALU/AGU
+  --    Latch value of upper half of register A
+  --    Latch value of lower half of source operand B
+  --    Update writedata with upper half of register B
+  -- For all instructions except indirect jumps and calls - Proceed to PH_Execute
 
   signal PH_Execute : boolean;
-  -- Process operands by ALU/AGU/Shifter
-  -- Latch writedata
-  -- finish all instructions except conditional branches and memory accesses
-
-  signal PH_Branch  : boolean;
-  -- [Optional] used only by PC-relative branches
-  -- Conditionally or unconditionally update PC with branch target
-  -- This phase overlaps with PH_Fetch of the next instruction
+  -- For shift/rotate instructions      - Process latched operands by Shifter
+  -- For ALU/Branch/Memory instructions - Process latched upper halves of operands by ALU/AGU
+  -- For ALU instructions               - write half (16 bits) of result to register file
+  -- For shift/rotate instructions      - Set flags for 32-bit result writeback
+  -- For ALU instructions               - Set flags for 16-bit result writeback
+  -- For conditional branches           - Set flags for 16-bit result writeback
+  -- For all instructions except memory loads -  proceed to PH_Fetch
+  -- For memory loads -  proceed to PH_Load_Address
 
   signal PH_Load_Address : boolean;
   -- [Optional] used only by memory loads
@@ -85,18 +106,21 @@ architecture a of nios2ee is
   subtype u32 is unsigned(31 downto 0);
   signal pc     : unsigned(TCM_ADDR_WIDTH-1 downto 2);
   signal nextpc : unsigned(31 downto 2);
+  signal iu_branch  : boolean; -- true=instruct program counter block to select instruction address with accordance to iu_taken_branch
 
   alias instr_s1 : u32 is tcm_readdata;
   -- instruction decode signals
   signal instr_s2 : unsigned(31 downto 6);
   -- alias instr_op    : unsigned(5  downto 0) is tcm_readdata( 5 downto  0);
-  alias instr_imm16 : unsigned(15 downto 0) is instr_s2(21 downto  6); -- I-type
-  alias instr_b     : unsigned(4  downto 0) is instr_s2(26 downto 22); -- I-type and R-type
-  alias instr_a     : unsigned(4  downto 0) is instr_s1(31 downto 27); -- I-type and R-type
+  alias instr_s2_imm16 : unsigned(15 downto 0) is instr_s2(21 downto  6); -- I-type
+  alias instr_s1_b     : unsigned(4  downto 0) is instr_s1(26 downto 22); -- I-type and R-type
+  alias instr_s2_b     : unsigned(4  downto 0) is instr_s2(26 downto 22); -- I-type and R-type
+  alias instr_s1_a     : unsigned(4  downto 0) is instr_s1(31 downto 27); -- I-type and R-type
+  alias instr_s2_a     : unsigned(4  downto 0) is instr_s2(31 downto 27); -- I-type and R-type
   -- alias instr_imm5  : unsigned(4  downto 0) is tcm_readdata(10 downto  6); -- R-type
   -- alias instr_opx   : unsigned(5  downto 0) is tcm_readdata(16 downto 11); -- R-type
-  alias instr_c     : unsigned(4  downto 0) is instr_s2(21 downto 17); -- R-type
-  alias instr_imm26 : unsigned(25 downto 0) is instr_s2(31 downto  6); -- J-type
+  alias instr_s2_c     : unsigned(4  downto 0) is instr_s2(21 downto 17); -- R-type
+  alias instr_s2_imm26 : unsigned(25 downto 0) is instr_s2(31 downto  6); -- J-type
 
   signal r_type, writeback_ex, is_call, is_next_pc, is_br, is_b_zero, is_srcreg_b : boolean;
   signal jump_class   : jump_class_t;
@@ -215,9 +239,9 @@ begin
     calc_nextpc   => PH_Decode,                             -- in  boolean;
     update_addr   => PH_Regfile1,                           -- in  boolean;
     jump_class    => jump_class,                            -- in  jump_class_t;
-    branch        => PH_Branch,                             -- in  boolean;
+    branch        => iu_branch,                             -- in  boolean;
     branch_taken  => cmp_result or is_br,                   -- in  boolean;
-    imm26         => instr_imm26,                           -- in  unsigned(25 downto 0);
+    imm26         => instr_s2_imm26,                           -- in  unsigned(25 downto 0);
     reg_a         => reg_a,                                 -- in  unsigned(31 downto 0);
     addr          => pc,                                    -- out unsigned(TCM_ADDR_WIDTH-1 downto 2)
     nextpc        => nextpc                                 -- out unsigned(31 downto 2)
@@ -228,13 +252,13 @@ begin
     if rising_edge(clk) then
       dm_write <= '0';
       dstreg_wren <= false;
+      iu_branch   <= false;
 
-      PH_Fetch          <= false;
-      PH_Decode         <= false;
-      PH_Regfile1       <= false;
-      PH_Regfile2       <= false;
-      PH_Execute        <= false;
-      PH_Branch         <= false;
+      PH_Fetch        <= false;
+      PH_Decode       <= false;
+      PH_Regfile1     <= false;
+      PH_Regfile2     <= false;
+      PH_Execute      <= false;
       PH_Load_Address <= false;
       PH_Load_Data    <= false;
 
@@ -265,7 +289,7 @@ begin
             PH_Fetch <= true; -- last execution stage indirect jumps
           elsif is_br then
             PH_Fetch <= true; -- last execution stage of unconditional branch
-            PH_Branch <= true;
+            iu_branch <= true;
           elsif is_srcreg_b and not is_b_zero then
             PH_Regfile2 <= true;
           else
@@ -290,7 +314,7 @@ begin
           else
             PH_Fetch <= true;
             if instr_class=INSTR_CLASS_BRANCH then
-              PH_Branch <= true;
+              iu_branch <= true;
             end if;
           end if;
         end if;
@@ -360,7 +384,7 @@ begin
            h_sel := sel_imm;
         else
            l_sel := sel_imm;
-           if imm16_class = IMM16_CLASS_s16 and instr_imm16(15)='1' then
+           if imm16_class = IMM16_CLASS_s16 and instr_s2_imm16(15)='1' then
              h_sel := sel_1;
            else
              h_sel := sel_0;
@@ -372,13 +396,13 @@ begin
       end if;
 
       case l_sel is
-        when sel_imm => reg_b(15 downto 0) <= instr_imm16;
+        when sel_imm => reg_b(15 downto 0) <= instr_s2_imm16;
         when sel_rf  => reg_b(15 downto 0) <= rf_readdata(15 downto 0);
         when sel_0   => reg_b(15 downto 0) <= (others => '0');
       end case;
 
       case h_sel is
-        when sel_imm => reg_b(31 downto 16) <= instr_imm16;
+        when sel_imm => reg_b(31 downto 16) <= instr_s2_imm16;
         when sel_rf  => reg_b(31 downto 16) <= rf_readdata(31 downto 16);
         when sel_0   => reg_b(31 downto 16) <= (others => '0');
         when sel_1   => reg_b(31 downto 16) <= (others => '1');
@@ -386,9 +410,9 @@ begin
     end if;
   end process;
 
-  rf_rdaddr <= to_integer(instr_a) when PH_Decode else to_integer(instr_b);
-  -- rf_wraddr <= to_integer(instr_c) when r_type else 31 when is_dst_ra else to_integer(instr_b);
-  rf_wraddr <= 31 when is_call else to_integer(instr_c) when r_type else to_integer(instr_b);
+  rf_rdaddr <= to_integer(instr_s1_a) when PH_Decode else to_integer(instr_s2_b);
+  -- rf_wraddr <= to_integer(instr_s2_c) when r_type else 31 when is_dst_ra else to_integer(instr_s2_b);
+  rf_wraddr <= 31 when is_call else to_integer(instr_s2_c) when r_type else to_integer(instr_s2_b);
   rf_wrnextpc <= is_call or is_next_pc;
   rf:entity work.n2register_file
    port map (
