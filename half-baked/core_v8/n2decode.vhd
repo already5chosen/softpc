@@ -5,23 +5,23 @@ use work.n2decode_definitions.all;
 
 entity n2decode is
  port (
-  clk          : in  std_logic;
-  start        : in  boolean;
-  instruction  : in  unsigned(31 downto 0);
+  clk              : in  std_logic;
+  start            : in  boolean;
+  instruction      : in  unsigned(31 downto 0);
   -- decode results are available on the next clock after start
-  r_type       : out boolean;
-  jump_class   : out jump_class_t;
-  instr_class  : out instr_class_t;
-  is_br        : out boolean;  -- unconditional branch
-  is_srcreg_b  : out boolean;  -- true when r[B] is source for ALU, Branch or shift operation, but not for stores
-  is_b_zero    : out boolean;
-  writeback_ex : out boolean;  -- true when destination register is updated with result of PH_execute stage
-  is_call      : out boolean;  -- active for call instructions on the next clock after start
-  is_next_pc   : out boolean;  -- active for nextpc instruction on the next clock after start
-  imm16_class  : out imm16_class_t;
-  shifter_op   : out natural range 0 to 7;  -- shift/rotate unit internal opcode
-  mem_op       : out natural range 0 to 15; -- memory(LSU) unit internal opcode
-  alu_op       : out natural range 0 to 15  -- ALU unit internal opcode
+  r_type           : out boolean;
+  jump_class       : out jump_class_t;
+  instr_class      : out instr_class_t;
+  is_br            : out boolean;  -- unconditional branch
+  is_srcreg_b      : out boolean;  -- true when r[B] is source for ALU, Branch or shift operation, but not for stores
+  writeback_ex     : out boolean;  -- true when destination register is updated with result of PH_execute stage
+  is_direct_call   : out boolean;
+  is_indirect_call : out boolean;
+  is_next_pc       : out boolean;  -- active for nextpc instruction on the next clock after start
+  imm16_class      : out imm16_class_t;
+  shifter_op       : out natural range 0 to 7;  -- shift/rotate unit internal opcode
+  mem_op           : out natural range 0 to 15; -- memory(LSU) unit internal opcode
+  alu_op           : out natural range 0 to 15  -- ALU unit internal opcode
  );
 end entity n2decode;
 
@@ -47,14 +47,11 @@ begin
   process (clk)
   begin
     if rising_edge(clk) then
-      is_b_zero <= b=0;
-      is_call  <= false;
       is_next_pc <= false;
 
       if start then
         op_reg <= op;
         r_type <= false;
-        is_call <= op=OP_CALL;
         case to_integer(op) is
           when OP_CALL => jump_class <= JUMP_CLASS_DIRECT;
           when OP_JMPI => jump_class <= JUMP_CLASS_DIRECT;
@@ -63,7 +60,6 @@ begin
         if op=OP_RTYPE then
           r_type <= true;
           op_reg <= opx;
-          is_call <= opx=OPX_CALLR;
           is_next_pc <= opx=OPX_NEXTPC;
           case to_integer(opx) is
             when OPX_RET   => jump_class <= JUMP_CLASS_INDIRECT;
@@ -85,13 +81,15 @@ begin
     writeback_ex <= false;
     alu_op       <= ALU_OP_ADD;
     is_br        <= false;
+    is_direct_call   <= false;
+    is_indirect_call <= false;
 
     if not r_type then
       is_srcreg_b <= (op_reg mod 4) = 2; -- branches and nops
       case to_integer(op_reg) is
         when OP_CALL =>
           -- jump_class   <= JUMP_CLASS_DIRECT;
-          null;
+          is_direct_call <= true;
 
         when OP_JMPI =>
           -- jump_class   <= JUMP_CLASS_DIRECT;
@@ -367,7 +365,7 @@ begin
 
         when OPX_CALLR  =>
           -- jump_class   <= JUMP_CLASS_INDIRECT;
-          null;
+          is_indirect_call <= true;
 
         when OPX_XOR    =>
           writeback_ex <= true;
