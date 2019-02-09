@@ -40,7 +40,7 @@ architecture a of n2alu_halfwidth is
   signal logic_r  : halfword_t;
   signal addsub_r : unsigned(DATA_WIDTH/2 downto 0);
   signal msb_a, msb_b : std_logic;
-  signal eq_l, eq_h : boolean;
+  signal ne_bytes : unsigned(DATA_WIDTH/16 downto 0);
   alias  addsub_w   : halfword_t is addsub_r(addsub_r'high-1 downto 0);
   alias  addsub_msb : std_logic is addsub_r(addsub_r'high);
 begin
@@ -103,7 +103,18 @@ begin
         result_a0 <= 1 - result_a0;
       end if;
 
-      eq_l <= eq_h; -- comparison for equal
+      for k in 0 to DATA_WIDTH/16-1 loop
+        if a(k*8+7 downto k*8) = b(k*8+7 downto k*8) then
+          ne_bytes(k) <= '0';
+        else
+          ne_bytes(k) <= '1';
+        end if;
+      end loop;
+      if ne_bytes(ne_bytes'high-1 downto 0)=0 then
+        ne_bytes(ne_bytes'high) <= '0';
+      else
+        ne_bytes(ne_bytes'high) <= '1';
+      end if;
 
       if start2 then
         -- latch lower half of AGU result
@@ -113,8 +124,7 @@ begin
     end if;
   end process;
 
-  eq_h <= addsub_w = 0; -- comparison for equal
-  eq <= eq_h and eq_l;
+  eq <= ne_bytes = 0; -- comparison for equal
   ge <= -- signed comparison
     (msb_a='0'   and msb_b='1') or
     (msb_a=msb_b and addsub_r(DATA_WIDTH/2-1)='0');
