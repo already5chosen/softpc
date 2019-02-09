@@ -19,6 +19,7 @@ entity n2program_counter is
   branch_taken  : in  boolean;
   imm26         : in  unsigned(25 downto 0);
   reg_a         : in  unsigned(31 downto 0);
+  pre_indirect_jump : out boolean;
   addr          : out unsigned(TCM_ADDR_WIDTH-1 downto 2);
   nextpc        : out unsigned(31 downto 2)
  );
@@ -39,7 +40,8 @@ begin
     if rising_edge(clk) then
 
       addr_reg <= addr;
-      indirect_jump <= false;
+      pre_indirect_jump <= false;
+      indirect_jump <= pre_indirect_jump;
 
       if calc_nextpc then
         addr_reg <= addr_reg + 1;
@@ -51,11 +53,12 @@ begin
       if update_addr then
         taken_branch_addr_ex := addr_reg_ex + immx(nextpc'high downto 2); -- calculate address of taken branch
         taken_branch_addr <= taken_branch_addr_ex(addr'range);
-        indirect_jump <= jump_class=JUMP_CLASS_INDIRECT;   -- indirect jumps, calls and returns
+        pre_indirect_jump <= jump_class=JUMP_CLASS_INDIRECT;   -- indirect jumps, calls and returns
       end if;
 
       if s_reset then
         addr_reg <= to_unsigned((RESET_ADDR mod TCM_REGION_SZ)/4, addr'length);
+        pre_indirect_jump <= false;
         indirect_jump <= false;
       end if;
     end if;

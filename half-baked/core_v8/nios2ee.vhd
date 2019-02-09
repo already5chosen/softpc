@@ -108,6 +108,7 @@ architecture a of nios2ee is
   signal pc     : unsigned(TCM_ADDR_WIDTH-1 downto 2);
   signal nextpc : unsigned(31 downto 2);
   signal iu_branch  : boolean; -- true=instruct program counter block to select instruction address with accordance to iu_taken_branch
+  signal iu_pre_indirect_jump  : boolean;
 
   alias instr_s1 : u32 is tcm_readdata;
   -- instruction decode signals
@@ -250,6 +251,7 @@ begin
     branch_taken  => cmp_result or is_br,                   -- in  boolean;
     imm26         => instr_s2_imm26,                        -- in  unsigned(25 downto 0);
     reg_a         => reg_a32,                               -- in  unsigned(31 downto 0);
+    pre_indirect_jump => iu_pre_indirect_jump,              -- out boolean;
     addr          => pc,                                    -- out unsigned(TCM_ADDR_WIDTH-1 downto 2)
     nextpc        => nextpc                                 -- out unsigned(31 downto 2)
    );
@@ -291,8 +293,6 @@ begin
         if PH_Regfile1 then
           if jump_class=JUMP_CLASS_DIRECT or is_next_pc then
             PH_Decode <= true; -- last execution stage of direct jumps overlaps with first stage of the next instruction
-          elsif jump_class=JUMP_CLASS_INDIRECT then
-            PH_Fetch <= true;  -- last execution stage indirect jumps
           elsif is_br then
             PH_Fetch <= true;  -- last execution stage of unconditional branch
             iu_branch <= true;
@@ -302,9 +302,13 @@ begin
         end if;
 
         if PH_Regfile2 then
-          PH_Execute <= true;
-          if result_sel_alu then
-            dstreg_wren <= writeback_ex;
+          if iu_pre_indirect_jump then
+            PH_Fetch <= true;  -- last execution stage indirect jumps
+          else
+            PH_Execute <= true;
+            if result_sel_alu then
+              dstreg_wren <= writeback_ex;
+            end if;
           end if;
         end if;
 
