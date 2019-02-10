@@ -366,7 +366,7 @@ begin
         rf_rdaddr_b <= to_integer(instr_s2_b)*2 + 1; -- MSH of r[B]
       else
         -- Shifter/Direct jumps and calls
-        rf_rdaddr_a <= to_integer(instr_s2_a)*2 + 0; -- LSH of r[A]
+        rf_rdaddr_b <= to_integer(instr_s2_a)*2 + 0; -- LSH of r[A]
         rf_ra_a32 <= true;
       end if;
     end if;
@@ -451,7 +451,7 @@ begin
     nextpc      => nextpc,         -- in  unsigned(31 downto 2);
     wrnextpc    => rf_wrnextpc,    -- in  boolean;
     wrdata0     => alu_result,     -- in  unsigned(15 downto 0);
-    wraddr1_lsb => alu_result_a0,  -- in  natural range 0 to 1;
+    wraddr0_lsb => alu_result_a0,  -- in  natural range 0 to 1;
     wrdata1     => sh_result,      -- in  unsigned(31 downto 0);
     wrdata1_rot16 => sh_rot16,     -- in  std_logic;
                                    -- '0' - wrdata1 written to register file as is,
@@ -521,7 +521,7 @@ begin
   tcm_wraddress  <= dm_address(TCM_ADDR_WIDTH-1 downto 2);
   tcm_byteenable <= byteenable;
   tcm_writedata  <= writedata;
-  tcm_write <= dm_write when is_tcm else '0';
+  tcm_write      <= dm_write when is_tcm else '0';
 
   avm_address    <= dm_address;
   avm_byteenable <= byteenable;

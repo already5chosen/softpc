@@ -11,7 +11,7 @@ entity n2register_file is
   nextpc      : in  unsigned(31 downto 2);
   wrnextpc    : in  boolean;
   wrdata0     : in  unsigned(15 downto 0);
-  wraddr1_lsb : in  natural range 0 to 1;
+  wraddr0_lsb : in  natural range 0 to 1;
   wrdata1     : in  unsigned(31 downto 0);
   wrdata1_rot16 : in  std_logic; -- '0' - wrdata1 written to register file as is,
                                  -- '1' - wrdata1 rotated by 16 before it is written to register file
@@ -60,15 +60,15 @@ begin
       wren_b <= true;
     elsif wrdata_sel0 then
       wrdata(15 downto 0) := wrdata0;
-      wraddr_a := wraddr*2 + wraddr1_lsb;
-      wren_a <= true;
+      wraddr_a := wraddr*2 + wraddr0_lsb;
+      wren_a <= wren;
     else
       if wrdata1_rot16='1' then
         wraddr_a := wraddr*2 + 1;
         wraddr_b := wraddr*2 + 0;
       end if;
-      wren_a <= true;
-      wren_b <= true;
+      wren_a <= wren;
+      wren_b <= wren;
     end if;
 
     if wren then
