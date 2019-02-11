@@ -60,7 +60,7 @@ architecture a of nios2ee is
   -- Calculate branch target of taken PC-relative branches
   -- For direct jumps and calls - drive new instruction address on tcm_rdaddress and proceed to PH_Decode
   -- For direct calls - write NextPC to RA (R31)
-  -- For NEXTPC instruction - write NextPC to R[C] and proceed to PH_Fetch
+  -- For NEXTPC instruction - write NextPC to R[C] and proceed to PH_Decode
   -- For unconditional branches - set relevant branch flags and proceed to PH_Fetch
   -- For indirect jumps and calls -
   --     Drive register file read addresses with indices of both halves of registers A
@@ -74,12 +74,13 @@ architecture a of nios2ee is
   -- For indirect jumps and calls -
   --    Latch values of both halves of registers A
   --    Set "indirect_jump" flag and proceed to PH_Fetch
+  -- For indirect calls - write NextPC to RA (R31)
   -- For shift/rotate instructions -
   --    Latch values of both halves of registers A
   -- For ALU/Branch/Memory instructions -
   --    Process latched lower halves of operands by ALU/AGU
   --    Latch value of upper half of register A
-  --    Latch value of lower half of source operand B
+  --    Latch value of upper half of source operand B
   --    Update writedata with upper half of register B
   -- For all instructions except indirect jumps and calls - Proceed to PH_Execute
 
@@ -89,7 +90,7 @@ architecture a of nios2ee is
   -- For ALU instructions               - write half (16 bits) of result to register file
   -- For shift/rotate instructions      - Set flags for 32-bit result writeback
   -- For ALU instructions               - Set flags for 16-bit result writeback
-  -- For conditional branches           - Set flags for 16-bit result writeback
+  -- For conditional branches           - Set iu_branch flag
   -- For all instructions except memory loads -  proceed to PH_Fetch
   -- For memory loads -  proceed to PH_Load_Address
 
