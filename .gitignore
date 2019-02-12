@@ -96,6 +96,16 @@ half-baked/core_v8/test_c6/db/*
 half-baked/core_v8/test_c6/incremental_db/*
 half-baked/core_v8/test_c6/output_files/*
 
+half-baked/core_v9/prj/db/*
+half-baked/core_v9/prj/incremental_db/*
+half-baked/core_v9/prj/output_files/*
+half-baked/core_v9/test_c8/db/*
+half-baked/core_v9/test_c8/incremental_db/*
+half-baked/core_v9/test_c8/output_files/*
+half-baked/core_v9/test_c6/db/*
+half-baked/core_v9/test_c6/incremental_db/*
+half-baked/core_v9/test_c6/output_files/*
+
 half-baked/freq_tests/*
 half-baked/n2alu_16b/*
 
