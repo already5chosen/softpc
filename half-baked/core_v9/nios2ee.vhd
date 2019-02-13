@@ -241,7 +241,7 @@ begin
     readdata      => dm_readdata,            -- in  unsigned(31 downto 0);
     readdata_bi   => agu_result(1 downto 0), -- in  unsigned(1 downto 0); -- byte index of LS byte of load result in dm_readdata
     -- result
-    result        => sh_result,   -- out unsigned(31 downto 0) -- result latency = 1 clock
+    result        => sh_result,   -- out unsigned(31 downto 0) -- result latency = 1 clock for align, 2 clocks for shift
     rot16         => sh_rot16     -- out std_logic
                                   -- '0' - result written to register file as is,
                                   -- '1' - result rotated by 16 before it is written to register file
@@ -391,6 +391,11 @@ begin
         rf_ra_a32 <= true;
       end if;
     end if;
+    if PH_Regfile2 then
+      rf_rdaddr_a <= to_integer(instr_s2_a)*2 + 0; -- LSH of r[A]
+      rf_rdaddr_b <= to_integer(instr_s2_a)*2 + 1; -- MSH of r[A]
+      rf_ra_a32 <= true;
+    end if;
   end process;
 
   process (clk)
@@ -402,9 +407,7 @@ begin
         instr_s2  <= instr_s1(31 downto 6);
       end if;
 
-      if PH_Regfile1 or PH_Regfile2 then
-        reg_a <= rf_readdata_a; -- latch register A
-      end if;
+      reg_a <= rf_readdata_a; -- latch register A
 
       -- register file write
       result_sel_alu <= instr_class=INSTR_CLASS_ALU;
@@ -452,7 +455,9 @@ begin
         when sel_1   => reg_b <= (others => '1');
       end case;
 
-      shifter_b <= reg_b(4 downto 0);
+      if PH_Regfile2 then
+        shifter_b <= reg_b(4 downto 0);
+      end if;
     end if;
   end process;
   reg_a32 <= reg_a & reg_b;
